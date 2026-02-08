@@ -1,7 +1,7 @@
 import { defaultKeymap, history, historyKeymap, indentWithTab } from "@codemirror/commands"
 import {
+	HighlightStyle,
 	bracketMatching,
-	defaultHighlightStyle,
 	foldGutter,
 	indentOnInput,
 	syntaxHighlighting,
@@ -15,51 +15,66 @@ import {
 	keymap,
 	lineNumbers,
 } from "@codemirror/view"
+import { tags } from "@lezer/highlight"
 import { useCallback, useEffect, useRef } from "react"
 import { rbl } from "./rbl-language"
 
 const darkTheme = EditorView.theme(
 	{
 		"&": {
-			backgroundColor: "#1e1e2e",
-			color: "#cdd6f4",
+			backgroundColor: "#1e1e1e",
+			color: "#d4d4d4",
 			flex: "1",
 			fontSize: "13px",
 		},
 		".cm-content": {
-			caretColor: "#f5e0dc",
-			fontFamily: "monospace",
+			caretColor: "#aeafad",
+			fontFamily: "'SF Mono', 'Fira Code', Menlo, Consolas, monospace",
 			lineHeight: "1.6",
 		},
 		".cm-cursor": {
-			borderLeftColor: "#f5e0dc",
+			borderLeftColor: "#aeafad",
 		},
 		"&.cm-focused .cm-selectionBackground, .cm-selectionBackground": {
-			backgroundColor: "#45475a",
+			backgroundColor: "#264f78",
 		},
 		".cm-gutters": {
-			backgroundColor: "#181825",
-			color: "#6c7086",
+			backgroundColor: "#1e1e1e",
+			color: "#858585",
 			border: "none",
-			borderRight: "1px solid #313244",
+			borderRight: "1px solid #333",
 		},
 		".cm-activeLineGutter": {
-			backgroundColor: "#1e1e2e",
-			color: "#a6adc8",
+			backgroundColor: "#2a2a2a",
+			color: "#c6c6c6",
 		},
 		".cm-activeLine": {
-			backgroundColor: "#21213580",
+			backgroundColor: "#2a2d2e50",
 		},
 		".cm-matchingBracket": {
-			backgroundColor: "#45475a",
-			color: "#f5e0dc",
+			backgroundColor: "#0064001a",
+			outline: "1px solid #888",
 		},
 		".cm-foldGutter": {
-			color: "#6c7086",
+			color: "#858585",
 		},
 	},
 	{ dark: true },
 )
+
+const rblHighlightStyle = HighlightStyle.define([
+	{ tag: tags.keyword, color: "#569cd6" },
+	{ tag: tags.typeName, color: "#4ec9b0" },
+	{ tag: tags.string, color: "#ce9178" },
+	{ tag: tags.number, color: "#b5cea8" },
+	{ tag: tags.bool, color: "#569cd6" },
+	{ tag: tags.comment, color: "#6a9955", fontStyle: "italic" },
+	{ tag: tags.operator, color: "#d4d4d4" },
+	{ tag: tags.variableName, color: "#9cdcfe" },
+	{ tag: tags.special(tags.variableName), color: "#dcdcaa" },
+	{ tag: tags.labelName, color: "#c586c0" },
+	{ tag: tags.bracket, color: "#d4d4d4" },
+])
 
 export type { Diagnostic }
 
@@ -96,7 +111,7 @@ export function CodeEditor({ value, onChange, diagnostics }: CodeEditorProps) {
 				foldGutter(),
 				indentOnInput(),
 				bracketMatching(),
-				syntaxHighlighting(defaultHighlightStyle, { fallback: true }),
+				syntaxHighlighting(rblHighlightStyle),
 				rbl(),
 				keymap.of([...defaultKeymap, ...historyKeymap, indentWithTab]),
 				lintGutter(),
