@@ -1,5 +1,5 @@
 import { cleanup, fireEvent, render, screen } from "@testing-library/react"
-import { afterEach, describe, expect, it } from "vitest"
+import { afterEach, beforeEach, describe, expect, it } from "vitest"
 import { FileListSidebar } from "../edit/FileListSidebar"
 import { useRobotFileStore } from "../store/robotFileStore"
 
@@ -7,9 +7,29 @@ function resetStore() {
 	useRobotFileStore.setState(useRobotFileStore.getInitialState())
 }
 
+function seedSpinBot() {
+	const id = crypto.randomUUID()
+	useRobotFileStore.setState({
+		files: [
+			{
+				id,
+				filename: "SpinBot.rbl",
+				source: 'robot "SpinBot"\n',
+				lastModified: Date.now(),
+				selected: true,
+			},
+		],
+		activeFileId: id,
+	})
+}
+
 afterEach(() => {
 	cleanup()
 	resetStore()
+})
+
+beforeEach(() => {
+	seedSpinBot()
 })
 
 describe("FileListSidebar", () => {

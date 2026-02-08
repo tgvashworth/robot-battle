@@ -15,8 +15,7 @@ const DEFAULT_OPTIONS: RenderOptions = {
 const ROBOT_RADIUS = 18
 const GUN_LENGTH = 25
 const GUN_WIDTH = 2
-const RADAR_ARC_RADIUS = 30
-const RADAR_ARC_SPAN = 30 // degrees
+const RADAR_ARC_RADIUS = 150
 const BULLET_RADIUS = 3
 const HEALTH_BAR_WIDTH = 30
 const HEALTH_BAR_HEIGHT = 3
@@ -95,7 +94,7 @@ export function createRenderer(): BattleRenderer {
 
 		// Radar arc
 		const radar = new Graphics()
-		drawRadarArc(radar, robot.color)
+		drawRadarArc(radar, robot.scanWidth)
 		radar.visible = options.showScanArcs
 		container.addChild(radar)
 
@@ -149,16 +148,22 @@ export function createRenderer(): BattleRenderer {
 		gfx.clear()
 		gfx.moveTo(0, 0)
 		gfx.lineTo(GUN_LENGTH, 0)
-		gfx.stroke({ width: GUN_WIDTH, color: 0xffffff })
+		gfx.stroke({ width: GUN_WIDTH + 1, color: 0xaaccdd })
 	}
 
-	function drawRadarArc(gfx: Graphics, color: number): void {
+	function drawRadarArc(gfx: Graphics, scanWidth: number): void {
 		gfx.clear()
-		const halfSpan = (RADAR_ARC_SPAN / 2) * DEG_TO_RAD
+		const halfSpan = (scanWidth / 2) * DEG_TO_RAD
+		// Fill
 		gfx.moveTo(0, 0)
 		gfx.arc(0, 0, RADAR_ARC_RADIUS, -halfSpan, halfSpan)
 		gfx.lineTo(0, 0)
-		gfx.fill({ color, alpha: 0.2 })
+		gfx.fill({ color: 0x00ff88, alpha: 0.15 })
+		// Edge stroke
+		gfx.moveTo(0, 0)
+		gfx.arc(0, 0, RADAR_ARC_RADIUS, -halfSpan, halfSpan)
+		gfx.lineTo(0, 0)
+		gfx.stroke({ width: 1, color: 0x00ff88, alpha: 0.4 })
 	}
 
 	function drawHealthBarFill(gfx: Graphics, health: number): void {
@@ -212,6 +217,7 @@ export function createRenderer(): BattleRenderer {
 		y: number,
 		gunHeading: number,
 		radarHeading: number,
+		scanWidth: number,
 		health: number,
 		alive: boolean,
 	): void {
@@ -222,8 +228,9 @@ export function createRenderer(): BattleRenderer {
 		// Gun rotation (heading is in game degrees, convert to canvas radians)
 		visual.gun.rotation = headingToRad(gunHeading)
 
-		// Radar rotation
+		// Radar rotation and scan width update
 		visual.radar.rotation = headingToRad(radarHeading)
+		drawRadarArc(visual.radar, scanWidth)
 		visual.radar.visible = alive && options.showScanArcs
 
 		// Health bar position follows robot
@@ -402,6 +409,7 @@ export function createRenderer(): BattleRenderer {
 					interp.y,
 					interp.gunHeading,
 					interp.radarHeading,
+					robot.scanWidth,
 					robot.health,
 					robot.alive,
 				)

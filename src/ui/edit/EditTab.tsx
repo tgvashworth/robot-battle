@@ -1,6 +1,6 @@
-import { useCallback, useState } from "react"
-import { Lexer } from "../../compiler"
+import { useCallback } from "react"
 import { useRobotFileStore } from "../store/robotFileStore"
+import { CodeEditor } from "./CodeEditor"
 import { FileListSidebar } from "./FileListSidebar"
 
 export function EditTab() {
@@ -11,50 +11,27 @@ export function EditTab() {
 	const activeFile = files.find((f) => f.id === activeFileId)
 	const source = activeFile?.source ?? ""
 
-	const [tokenCount, setTokenCount] = useState<number | null>(null)
-
-	const handleTokenize = useCallback(() => {
-		const tokens = new Lexer(source).tokenize()
-		setTokenCount(tokens.length)
-	}, [source])
-
 	const handleSourceChange = useCallback(
-		(e: React.ChangeEvent<HTMLTextAreaElement>) => {
+		(value: string) => {
 			if (activeFileId) {
-				updateSource(activeFileId, e.target.value)
+				updateSource(activeFileId, value)
 			}
 		},
 		[activeFileId, updateSource],
 	)
 
 	return (
-		<div>
-			<h2>Editor</h2>
-			<div style={{ display: "flex", gap: 0 }}>
-				<FileListSidebar />
-				<div style={{ flex: 1, minWidth: 0 }}>
-					<textarea
-						value={source}
-						onChange={handleSourceChange}
-						style={{
-							width: "100%",
-							height: 300,
-							fontFamily: "monospace",
-							fontSize: 13,
-							background: "#1a1a2e",
-							color: "#e0e0e0",
-							border: "1px solid #444",
-							padding: 8,
-							boxSizing: "border-box",
-						}}
-					/>
-					<div style={{ marginTop: 8 }}>
-						<button type="button" onClick={handleTokenize}>
-							Tokenize
-						</button>
-						{tokenCount !== null && <span style={{ marginLeft: 12 }}>{tokenCount} tokens</span>}
-					</div>
-				</div>
+		<div style={{ display: "flex", flex: 1, minHeight: 0 }}>
+			<FileListSidebar />
+			<div
+				style={{
+					flex: 1,
+					minWidth: 0,
+					display: "flex",
+					flexDirection: "column",
+				}}
+			>
+				<CodeEditor value={source} onChange={handleSourceChange} />
 			</div>
 		</div>
 	)

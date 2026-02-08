@@ -23,6 +23,11 @@ describe("battleStore", () => {
 		expect(speed).toBe(1)
 	})
 
+	it("starts with default tick count of 2000", () => {
+		const { tickCount } = useBattleStore.getState()
+		expect(tickCount).toBe(2000)
+	})
+
 	it("transitions to running on startBattle", () => {
 		useBattleStore.getState().startBattle()
 		const { status, currentTick, battleLog } = useBattleStore.getState()
@@ -57,5 +62,10 @@ describe("battleStore", () => {
 		useBattleStore.getState().setBattleLog(["old log"])
 		useBattleStore.getState().startBattle()
 		expect(useBattleStore.getState().battleLog).toEqual([])
+	})
+
+	it("sets tick count", () => {
+		useBattleStore.getState().setTickCount(5000)
+		expect(useBattleStore.getState().tickCount).toBe(5000)
 	})
 })

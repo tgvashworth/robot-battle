@@ -17,11 +17,13 @@ export function FileListSidebar() {
 			style={{
 				width: 200,
 				minWidth: 200,
-				borderRight: "1px solid #444",
-				padding: 8,
+				padding: "12px 8px",
 				display: "flex",
 				flexDirection: "column",
 				gap: 4,
+				background: "#fafafa",
+				borderRight: "1px solid #e0e0e0",
+				overflowY: "auto",
 			}}
 		>
 			<div
@@ -30,20 +32,25 @@ export function FileListSidebar() {
 					justifyContent: "space-between",
 					alignItems: "center",
 					marginBottom: 8,
+					padding: "0 4px",
 				}}
 			>
-				<strong style={{ color: "#e0e0e0" }}>Files</strong>
+				<strong
+					style={{
+						fontSize: 12,
+						color: "#666",
+						textTransform: "uppercase",
+						letterSpacing: "0.04em",
+					}}
+				>
+					Files
+				</strong>
 				<button
 					type="button"
 					onClick={handleNewRobot}
 					style={{
-						background: "#2a2a4a",
-						color: "#e0e0e0",
-						border: "1px solid #555",
-						borderRadius: 4,
-						padding: "2px 8px",
-						cursor: "pointer",
 						fontSize: 12,
+						padding: "2px 8px",
 					}}
 				>
 					+ New Robot
@@ -68,10 +75,9 @@ export function FileListSidebar() {
 								display: "flex",
 								justifyContent: "space-between",
 								alignItems: "center",
-								padding: "4px 6px",
-								borderRadius: 4,
-								background: isActive ? "#2a2a4a" : "transparent",
-								cursor: "pointer",
+								padding: "4px 8px",
+								borderRadius: 6,
+								background: isActive ? "#e8e8e8" : "transparent",
 							}}
 						>
 							<button
@@ -79,7 +85,7 @@ export function FileListSidebar() {
 								onClick={() => setActiveFile(file.id)}
 								style={{
 									flex: 1,
-									color: "#e0e0e0",
+									color: isActive ? "#1a1a1a" : "#444",
 									fontWeight: isActive ? "bold" : "normal",
 									overflow: "hidden",
 									textOverflow: "ellipsis",
@@ -89,8 +95,7 @@ export function FileListSidebar() {
 									cursor: "pointer",
 									textAlign: "left",
 									padding: 0,
-									fontFamily: "inherit",
-									fontSize: "inherit",
+									fontSize: 13,
 								}}
 							>
 								{file.filename}
@@ -105,11 +110,12 @@ export function FileListSidebar() {
 								style={{
 									background: "none",
 									border: "none",
-									color: "#888",
+									color: "#aaa",
 									cursor: "pointer",
 									padding: "0 4px",
-									fontSize: 14,
+									fontSize: 13,
 									lineHeight: 1,
+									borderRadius: 4,
 								}}
 							>
 								X

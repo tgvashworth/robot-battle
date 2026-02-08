@@ -68,8 +68,8 @@ describe("Bullet Firing and Physics", () => {
 		expect(bullet!.ownerId).toBe(0)
 		expect(bullet!.power).toBe(3)
 
-		// Verify speed = bulletSpeedBase - bulletSpeedPowerFactor * power = 20 - 3*3 = 11
-		expect(bullet!.speed).toBe(20 - 3 * 3)
+		// Verify speed = bulletSpeedBase - bulletSpeedPowerFactor * power = 35 - 3*3 = 26
+		expect(bullet!.speed).toBe(35 - 3 * 3)
 
 		// Verify heading matches gun heading
 		expect(bullet!.heading).toBe(firedEvent.heading)
@@ -216,7 +216,7 @@ describe("Bullet Firing and Physics", () => {
 		const startX = firedEvent.x
 		const startY = firedEvent.y
 		const heading = firedEvent.heading
-		const speed = 20 - 3 * 3 // bulletSpeedBase - bulletSpeedPowerFactor * power = 11
+		const speed = 35 - 3 * 3 // bulletSpeedBase - bulletSpeedPowerFactor * power = 26
 
 		// Advance one tick
 		const nextResult = battle.tick()

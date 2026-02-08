@@ -2,15 +2,19 @@ import type {
 	Battle,
 	BattleResult,
 	BulletFiredEvent,
+	BulletHitEvent,
 	BulletState,
 	BulletWallEvent,
 	GameConfig,
 	GameEvent,
 	GameState,
 	RobotAPI,
+	RobotDiedEvent,
 	RobotModule,
 	RobotState,
 	RoundResult,
+	ScanDetectionEvent,
+	ScannedEvent,
 	TickResult,
 	WallHitEvent,
 } from "../../spec/simulation"
@@ -30,6 +34,7 @@ interface InternalRobot {
 	gunHeading: number
 	gunHeat: number
 	radarHeading: number
+	scanWidth: number
 	health: number
 	energy: number
 	alive: boolean
@@ -52,6 +57,14 @@ interface InternalRobot {
 	// Pending event callbacks
 	pendingWallHitBearing: number | undefined
 	pendingBulletMiss: boolean
+	pendingHitDamage: number | undefined
+	pendingHitBearing: number | undefined
+	pendingBulletHitTargetId: number | undefined
+	pendingOnScan: Array<{ distance: number; bearing: number }>
+	pendingOnScanned: Array<{ bearing: number }>
+
+	// Radar sweep tracking
+	prevRadarHeading: number
 }
 
 /**
@@ -85,7 +98,7 @@ export function createBattle(config: GameConfig, robots: RobotModule[]): Battle 
 
 	// Give each robot its API and call init()
 	for (const robot of internalRobots) {
-		const api = createRobotAPI(robot, config)
+		const api = createRobotAPI(robot, config, () => tick, rng)
 		robot.module.init(api)
 	}
 
@@ -111,6 +124,11 @@ export function createBattle(config: GameConfig, robots: RobotModule[]): Battle 
 		// Clear events for this tick
 		tickEvents = []
 
+		// Save radar headings before any updates this tick
+		for (const robot of internalRobots) {
+			robot.prevRadarHeading = robot.radarHeading
+		}
+
 		// Reset per-tick intents (speed persists)
 		for (const robot of internalRobots) {
 			if (!robot.alive) continue
@@ -120,16 +138,118 @@ export function createBattle(config: GameConfig, robots: RobotModule[]): Battle 
 			robot.intendedFire = 0
 		}
 
-		// Step 1: Move bullets
+		// Step 1: Move bullets (save previous positions for swept collision)
+		const bulletPrevPositions = new Map<number, { prevX: number; prevY: number }>()
 		for (const bullet of bullets) {
+			bulletPrevPositions.set(bullet.id, { prevX: bullet.x, prevY: bullet.y })
 			const rad = (bullet.heading * Math.PI) / 180
 			bullet.x += bullet.speed * Math.sin(rad)
 			bullet.y -= bullet.speed * Math.cos(rad)
 		}
 
-		// Step 3: Remove bullets that exit arena bounds
+		// Step 2: Bullet-robot swept collision detection
+		const bulletsHitRobot = new Set<number>()
+		const collisionRadius = config.physics.robotRadius + config.physics.bulletRadius
+		for (const bullet of bullets) {
+			if (bulletsHitRobot.has(bullet.id)) continue
+			const prev = bulletPrevPositions.get(bullet.id)!
+			for (const target of internalRobots) {
+				if (!target.alive) continue
+				if (target.id === bullet.ownerId) continue
+
+				// Swept line-segment vs circle test
+				const result = lineSegmentIntersectsCircle(
+					prev.prevX,
+					prev.prevY,
+					bullet.x,
+					bullet.y,
+					target.x,
+					target.y,
+					collisionRadius,
+				)
+
+				if (result.hit) {
+					// Position bullet at the intersection point along the segment
+					const hitX = prev.prevX + result.t * (bullet.x - prev.prevX)
+					const hitY = prev.prevY + result.t * (bullet.y - prev.prevY)
+					bullet.x = hitX
+					bullet.y = hitY
+
+					// Hit! Calculate damage
+					const damage =
+						config.physics.bulletDamageBase * bullet.power +
+						Math.max(0, bullet.power - 1) * config.physics.bulletDamageBonus
+
+					// Apply damage to target
+					target.health = Math.max(0, target.health - damage)
+					target.damageReceived += damage
+
+					// Award energy back to shooter
+					const shooter = internalRobots.find((r) => r.id === bullet.ownerId)
+					if (shooter?.alive) {
+						const energyReturn = 3 * bullet.power
+						shooter.energy = Math.min(config.physics.maxEnergy, shooter.energy + energyReturn)
+						shooter.bulletsHit++
+						shooter.damageDealt += damage
+
+						// Queue onBulletHit callback for shooter
+						shooter.pendingBulletHitTargetId = target.id
+					}
+
+					// Calculate bearing from target to bullet (relative to target heading)
+					const bearingAbsolute = normalizeAngle(
+						(Math.atan2(bullet.x - target.x, -(bullet.y - target.y)) * 180) / Math.PI,
+					)
+					let bearingRelative = bearingAbsolute - target.heading
+					if (bearingRelative > 180) bearingRelative -= 360
+					if (bearingRelative < -180) bearingRelative += 360
+
+					// Queue onHit callback for target
+					target.pendingHitDamage = damage
+					target.pendingHitBearing = bearingRelative
+
+					// Emit bullet_hit event
+					const hitEvent: BulletHitEvent = {
+						type: "bullet_hit",
+						bulletId: bullet.id,
+						shooterId: bullet.ownerId,
+						targetId: target.id,
+						x: bullet.x,
+						y: bullet.y,
+						damage,
+					}
+					tickEvents.push(hitEvent)
+
+					// Check if target died
+					if (target.health <= 0) {
+						target.alive = false
+						if (shooter?.alive) {
+							shooter.kills++
+						}
+
+						const diedEvent: RobotDiedEvent = {
+							type: "robot_died",
+							robotId: target.id,
+							x: target.x,
+							y: target.y,
+							killerId: bullet.ownerId,
+						}
+						tickEvents.push(diedEvent)
+					}
+
+					// Mark bullet for removal
+					bulletsHitRobot.add(bullet.id)
+					break // Bullet can only hit one robot
+				}
+			}
+		}
+
+		// Step 3: Remove bullets that exit arena bounds (and bullets that hit robots)
 		const survivingBullets: InternalBullet[] = []
 		for (const bullet of bullets) {
+			// Skip bullets that already hit a robot
+			if (bulletsHitRobot.has(bullet.id)) continue
+
 			if (
 				bullet.x < 0 ||
 				bullet.x > config.arena.width ||
@@ -175,6 +295,43 @@ export function createBattle(config: GameConfig, robots: RobotModule[]): Battle 
 			}
 		}
 
+		// Deliver bullet hit callbacks before tick()
+		for (const robot of internalRobots) {
+			if (!robot.alive) continue
+			if (robot.pendingHitDamage !== undefined && robot.pendingHitBearing !== undefined) {
+				robot.module.onHit(robot.pendingHitDamage, robot.pendingHitBearing)
+				robot.pendingHitDamage = undefined
+				robot.pendingHitBearing = undefined
+			}
+		}
+
+		// Deliver onBulletHit callbacks to shooters before tick()
+		for (const robot of internalRobots) {
+			if (!robot.alive) continue
+			if (robot.pendingBulletHitTargetId !== undefined) {
+				robot.module.onBulletHit(robot.pendingBulletHitTargetId)
+				robot.pendingBulletHitTargetId = undefined
+			}
+		}
+
+		// Deliver scan callbacks before tick()
+		for (const robot of internalRobots) {
+			if (!robot.alive) continue
+			for (const scan of robot.pendingOnScan) {
+				robot.module.onScan(scan.distance, scan.bearing)
+			}
+			robot.pendingOnScan = []
+		}
+
+		// Deliver scanned callbacks before tick()
+		for (const robot of internalRobots) {
+			if (!robot.alive) continue
+			for (const scanned of robot.pendingOnScanned) {
+				robot.module.onScanned(scanned.bearing)
+			}
+			robot.pendingOnScanned = []
+		}
+
 		// Call tick() on each alive robot
 		for (const robot of internalRobots) {
 			if (!robot.alive) continue
@@ -187,6 +344,68 @@ export function createBattle(config: GameConfig, robots: RobotModule[]): Battle 
 		for (const robot of internalRobots) {
 			if (!robot.alive) continue
 			applyMovement(robot, config, tickEvents)
+		}
+
+		// Step 5: Radar scanning
+		for (const scanner of internalRobots) {
+			if (!scanner.alive) continue
+
+			const prevAngle = scanner.prevRadarHeading
+			const currAngle = scanner.radarHeading
+
+			for (const target of internalRobots) {
+				if (!target.alive) continue
+				if (target.id === scanner.id) continue
+
+				// Calculate distance to target
+				const dx = target.x - scanner.x
+				const dy = target.y - scanner.y
+				const distance = Math.sqrt(dx * dx + dy * dy)
+
+				// Check scan range
+				if (distance > config.physics.scanRange) continue
+
+				// Calculate absolute bearing from scanner to target
+				// 0=north, clockwise
+				const bearingToTarget = normalizeAngle((Math.atan2(dx, -dy) * 180) / Math.PI)
+
+				// Check if bearingToTarget falls within the sweep arc
+				if (isAngleInSweep(prevAngle, currAngle, bearingToTarget)) {
+					// Calculate bearing from target to scanner (for onScanned)
+					const dxBack = scanner.x - target.x
+					const dyBack = scanner.y - target.y
+					const bearingToScanner = normalizeAngle((Math.atan2(dxBack, -dyBack) * 180) / Math.PI)
+
+					// Queue callbacks for next tick delivery
+					scanner.pendingOnScan.push({
+						distance,
+						bearing: bearingToTarget,
+					})
+					target.pendingOnScanned.push({
+						bearing: bearingToScanner,
+					})
+
+					// Emit scan_detection event
+					const scanEvent: ScanDetectionEvent = {
+						type: "scan_detection",
+						scannerId: scanner.id,
+						targetId: target.id,
+						distance,
+						bearing: bearingToTarget,
+						scanStartAngle: prevAngle,
+						scanEndAngle: currAngle,
+					}
+					tickEvents.push(scanEvent)
+
+					// Emit scanned event
+					const scannedEvent: ScannedEvent = {
+						type: "scanned",
+						targetId: target.id,
+						bearing: bearingToScanner,
+					}
+					tickEvents.push(scannedEvent)
+				}
+			}
 		}
 
 		// Step 19: Process fire intents
@@ -376,6 +595,7 @@ function createInternalRobot(
 		gunHeading: rng.nextFloat() * 360,
 		gunHeat: 3.0,
 		radarHeading: rng.nextFloat() * 360,
+		scanWidth: config.physics.defaultScanWidth,
 		health: config.physics.startHealth,
 		energy: config.physics.startEnergy,
 		alive: true,
@@ -394,6 +614,12 @@ function createInternalRobot(
 		intendedFire: 0,
 		pendingWallHitBearing: undefined,
 		pendingBulletMiss: false,
+		pendingHitDamage: undefined,
+		pendingHitBearing: undefined,
+		pendingBulletHitTargetId: undefined,
+		pendingOnScan: [],
+		pendingOnScanned: [],
+		prevRadarHeading: 0, // Will be set at start of first tick
 	}
 }
 
@@ -409,6 +635,7 @@ function resetRobot(robot: InternalRobot, config: GameConfig, rng: PRNG) {
 	robot.gunHeading = rng.nextFloat() * 360
 	robot.gunHeat = 3.0
 	robot.radarHeading = rng.nextFloat() * 360
+	robot.scanWidth = config.physics.defaultScanWidth
 	robot.health = config.physics.startHealth
 	robot.energy = config.physics.startEnergy
 	robot.alive = true
@@ -420,6 +647,12 @@ function resetRobot(robot: InternalRobot, config: GameConfig, rng: PRNG) {
 	robot.intendedFire = 0
 	robot.pendingWallHitBearing = undefined
 	robot.pendingBulletMiss = false
+	robot.pendingHitDamage = undefined
+	robot.pendingHitBearing = undefined
+	robot.pendingBulletHitTargetId = undefined
+	robot.pendingOnScan = []
+	robot.pendingOnScanned = []
+	robot.prevRadarHeading = robot.radarHeading
 }
 
 function snapshotRobot(robot: InternalRobot): RobotState {
@@ -434,6 +667,7 @@ function snapshotRobot(robot: InternalRobot): RobotState {
 		gunHeading: robot.gunHeading,
 		gunHeat: robot.gunHeat,
 		radarHeading: robot.radarHeading,
+		scanWidth: robot.scanWidth,
 		health: robot.health,
 		energy: robot.energy,
 		alive: robot.alive,
@@ -550,11 +784,26 @@ function applyMovement(robot: InternalRobot, config: GameConfig, events: GameEve
 		robot.gunHeat = Math.max(0, robot.gunHeat - config.physics.gunCooldownRate)
 	}
 
+	// Radar turn
+	robot.radarHeading = normalizeAngle(
+		robot.radarHeading +
+			clamp(
+				robot.intendedRadarTurnRate,
+				-config.physics.maxRadarTurnRate,
+				config.physics.maxRadarTurnRate,
+			),
+	)
+
 	// Energy regen
 	robot.energy = Math.min(config.physics.maxEnergy, robot.energy + config.physics.energyRegenRate)
 }
 
-function createRobotAPI(robot: InternalRobot, config: GameConfig): RobotAPI {
+function createRobotAPI(
+	robot: InternalRobot,
+	config: GameConfig,
+	getTick: () => number,
+	rng: PRNG,
+): RobotAPI {
 	return {
 		setSpeed: (speed) => {
 			robot.intendedSpeed = speed
@@ -588,17 +837,19 @@ function createRobotAPI(robot: InternalRobot, config: GameConfig): RobotAPI {
 			robot.intendedRadarTurnRate = angleDiff(robot.radarHeading, heading)
 		},
 		getRadarHeading: () => robot.radarHeading,
-		setScanWidth: () => {},
+		setScanWidth: (degrees) => {
+			robot.scanWidth = clamp(degrees, 1, config.physics.maxScanWidth)
+		},
 		getHealth: () => robot.health,
-		getTick: () => 0,
+		getTick,
 		arenaWidth: () => config.arena.width,
 		arenaHeight: () => config.arena.height,
 		robotCount: () => config.robots.length,
 		distanceTo: (x, y) => Math.sqrt((robot.x - x) ** 2 + (robot.y - y) ** 2),
 		bearingTo: (x, y) =>
 			normalizeAngle((Math.atan2(y - robot.y, x - robot.x) * 180) / Math.PI + 90),
-		random: (max) => Math.floor(Math.random() * max),
-		randomFloat: () => Math.random(),
+		random: (max) => Math.floor(rng.nextFloat() * max),
+		randomFloat: () => rng.nextFloat(),
 		debugInt: () => {},
 		debugFloat: () => {},
 		setColor: () => {},
@@ -633,4 +884,90 @@ function angleDiff(from: number, to: number): number {
 
 function clamp(x: number, lo: number, hi: number): number {
 	return Math.min(Math.max(x, lo), hi)
+}
+
+/**
+ * Swept line-segment vs circle intersection test.
+ * Checks if the line segment from (ax, ay) to (bx, by) passes through
+ * or within the circle centered at (cx, cy) with the given radius.
+ *
+ * Returns { hit, t } where t is the parameter along the segment (0=start, 1=end)
+ * of the closest point on the segment to the circle center.
+ */
+export function lineSegmentIntersectsCircle(
+	ax: number,
+	ay: number,
+	bx: number,
+	by: number,
+	cx: number,
+	cy: number,
+	radius: number,
+): { hit: boolean; t: number } {
+	// Direction vector D = B - A
+	const dx = bx - ax
+	const dy = by - ay
+
+	// Vector from A to circle center: F = A - C
+	const fx = ax - cx
+	const fy = ay - cy
+
+	const dDotD = dx * dx + dy * dy
+
+	// Degenerate case: segment has zero length (bullet didn't move)
+	if (dDotD === 0) {
+		const distSq = fx * fx + fy * fy
+		return { hit: distSq <= radius * radius, t: 0 }
+	}
+
+	// t = clamp(-(F . D) / (D . D), 0, 1)
+	const fDotD = fx * dx + fy * dy
+	const t = Math.min(Math.max(-fDotD / dDotD, 0), 1)
+
+	// Closest point on segment = A + t * D
+	const closestX = ax + t * dx
+	const closestY = ay + t * dy
+
+	// Distance from closest point to circle center
+	const distX = closestX - cx
+	const distY = closestY - cy
+	const distSq = distX * distX + distY * distY
+
+	return { hit: distSq <= radius * radius, t }
+}
+
+/**
+ * Check if an angle falls within a sweep arc from `from` to `to`.
+ * The sweep is directional: it goes from `from` to `to`.
+ * If from === to (no sweep), we still check a thin line (exact match).
+ * All angles are in [0, 360) degrees.
+ */
+function isAngleInSweep(from: number, to: number, angle: number): boolean {
+	// Normalize all angles to [0, 360)
+	const f = normalizeAngle(from)
+	const t = normalizeAngle(to)
+	const a = normalizeAngle(angle)
+
+	// If sweep is zero width, still do a thin-angle check
+	// (needed when radar isn't turning)
+	if (f === t) {
+		// Exact match within a small tolerance
+		const diff = Math.abs(a - f)
+		return diff < 0.001 || Math.abs(diff - 360) < 0.001
+	}
+
+	// Determine the sweep direction: from -> to
+	// We calculate the signed angular difference from f to t
+	let sweepSize = t - f
+	if (sweepSize < 0) sweepSize += 360
+
+	// If sweep covers more than 180, treat it as going the short way around
+	// (This handles the case where radar turned by up to maxRadarTurnRate)
+	// Actually, for correctness, the sweep goes in the direction of smallest arc
+	// unless the radar turned more than 180 (unlikely with typical maxRadarTurnRate)
+
+	// Check if angle falls within the arc from f to t going in the sweep direction
+	let angleFromStart = a - f
+	if (angleFromStart < 0) angleFromStart += 360
+
+	return angleFromStart <= sweepSize
 }

@@ -26,7 +26,7 @@ export const DEFAULT_PHYSICS: PhysicsConfig = {
 	defaultScanWidth: 10,
 	maxScanWidth: 45,
 	scanRange: Number.POSITIVE_INFINITY,
-	bulletSpeedBase: 20,
+	bulletSpeedBase: 35,
 	bulletSpeedPowerFactor: 3,
 	bulletDamageBase: 4,
 	bulletDamageBonus: 2,

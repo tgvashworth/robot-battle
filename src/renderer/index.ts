@@ -1,4 +1,5 @@
 export { createGameLoop } from "./game-loop"
 export { clamp, lerp, lerpAngle, normalizeAngle } from "./math"
 export { createReplaySource } from "./replay-source"
+export type { ReplayTickSource } from "./replay-source"
 export { createRenderer } from "./renderer"

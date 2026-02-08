@@ -35,6 +35,9 @@ export interface RobotFile {
 
 	/** Timestamp of last modification. */
 	lastModified: number
+
+	/** Whether this robot is selected for battle. Defaults to true. */
+	selected: boolean
 }
 
 // ─── Storage ──────────────────────────────────────────────────────────────────

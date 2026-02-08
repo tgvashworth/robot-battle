@@ -156,6 +156,7 @@ export interface RobotState {
 
 	// Radar
 	readonly radarHeading: number // absolute radar heading (degrees)
+	readonly scanWidth: number // current scan width (degrees)
 
 	// Status
 	readonly health: number // 0-100
