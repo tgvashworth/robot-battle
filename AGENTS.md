@@ -11,6 +11,8 @@ bun run check:fix     # auto-fix lint + formatting
 
 Always run `bun run typecheck && bun run test && bun run check` before considering work done. Bun needs `/opt/homebrew/bin` in PATH.
 
+**CRITICAL: Pre-commit hooks must pass before pushing.** This repo uses Python `pre-commit` (not husky). Hooks run: large file check, JSON check, merge conflict check, private key detection, end-of-file fixer, trailing whitespace trimmer, `biome check`, and `typecheck`. Never push if pre-commit hooks are failing. If a commit fails hooks, fix the issues and create a NEW commit (don't amend). Always verify the commit actually succeeded before pushing.
+
 ## Code Style
 
 - **Biome** handles formatting and linting. Config: `biome.json`

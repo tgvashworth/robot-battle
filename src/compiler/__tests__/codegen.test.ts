@@ -455,6 +455,358 @@ on scan(distance float, bearing angle) {
 			expect(debugCalls.length).toBe(1)
 			expect(debugCalls[0]!.args[0]).toBeCloseTo(100.5)
 		})
+
+		it("on scan handler uses distance parameter via debug()", async () => {
+			const source = `${R}
+func tick() {}
+on scan(distance float, bearing angle) {
+  debug(distance)
+}`
+			const { wasm } = compile(source)
+			const { instance, calls } = await instantiate(wasm)
+			const onScan = instance.exports.on_scan as (distance: number, bearing: number) => void
+			onScan(150.0, 45.0)
+			const debugCalls = calls.filter((c) => c.name === "debugFloat")
+			expect(debugCalls.length).toBe(1)
+			expect(debugCalls[0]!.args[0]).toBeCloseTo(150.0)
+		})
+
+		it("on scan handler uses bearing parameter", async () => {
+			const source = `${R}
+func tick() {}
+on scan(distance float, bearing angle) {
+  debug(bearing)
+}`
+			const { wasm } = compile(source)
+			const { instance, calls } = await instantiate(wasm)
+			const onScan = instance.exports.on_scan as (distance: number, bearing: number) => void
+			onScan(150.0, 45.0)
+			const debugCalls = calls.filter((c) => c.name === "debugFloat")
+			expect(debugCalls.length).toBe(1)
+			expect(debugCalls[0]!.args[0]).toBeCloseTo(45.0)
+		})
+
+		it("on hit handler uses damage parameter", async () => {
+			const source = `${R}
+func tick() {}
+on hit(damage float, bearing angle) {
+  debug(damage)
+}`
+			const { wasm } = compile(source)
+			const { instance, calls } = await instantiate(wasm)
+			const onHit = instance.exports.on_hit as (damage: number, bearing: number) => void
+			onHit(25.0, 180.0)
+			const debugCalls = calls.filter((c) => c.name === "debugFloat")
+			expect(debugCalls.length).toBe(1)
+			expect(debugCalls[0]!.args[0]).toBeCloseTo(25.0)
+		})
+
+		it("on hit handler uses bearing parameter", async () => {
+			const source = `${R}
+func tick() {}
+on hit(damage float, bearing angle) {
+  debug(bearing)
+}`
+			const { wasm } = compile(source)
+			const { instance, calls } = await instantiate(wasm)
+			const onHit = instance.exports.on_hit as (damage: number, bearing: number) => void
+			onHit(25.0, 180.0)
+			const debugCalls = calls.filter((c) => c.name === "debugFloat")
+			expect(debugCalls.length).toBe(1)
+			expect(debugCalls[0]!.args[0]).toBeCloseTo(180.0)
+		})
+
+		it("on wallHit handler uses bearing parameter", async () => {
+			const source = `${R}
+func tick() {}
+on wallHit(bearing angle) {
+  debug(bearing)
+}`
+			const { wasm } = compile(source)
+			const { instance, calls } = await instantiate(wasm)
+			const onWallHit = instance.exports.on_wallHit as (bearing: number) => void
+			onWallHit(90.0)
+			const debugCalls = calls.filter((c) => c.name === "debugFloat")
+			expect(debugCalls.length).toBe(1)
+			expect(debugCalls[0]!.args[0]).toBeCloseTo(90.0)
+		})
+
+		it("on bulletMiss handler with no params", async () => {
+			const source = `${R}
+func tick() {}
+on bulletMiss() {
+  debug(1)
+}`
+			const { wasm } = compile(source)
+			const { instance, calls } = await instantiate(wasm)
+			const onBulletMiss = instance.exports.on_bulletMiss as () => void
+			onBulletMiss()
+			const debugCalls = calls.filter((c) => c.name === "debugInt")
+			expect(debugCalls.length).toBe(1)
+			expect(debugCalls[0]!.args[0]).toBe(1)
+		})
+
+		it("on bulletHit handler uses targetId parameter", async () => {
+			const source = `${R}
+func tick() {}
+on bulletHit(targetId int) {
+  debug(targetId)
+}`
+			const { wasm } = compile(source)
+			const { instance, calls } = await instantiate(wasm)
+			const onBulletHit = instance.exports.on_bulletHit as (targetId: number) => void
+			onBulletHit(7)
+			const debugCalls = calls.filter((c) => c.name === "debugInt")
+			expect(debugCalls.length).toBe(1)
+			expect(debugCalls[0]!.args[0]).toBe(7)
+		})
+
+		it("on scanned handler uses bearing parameter", async () => {
+			const source = `${R}
+func tick() {}
+on scanned(bearing angle) {
+  debug(bearing)
+}`
+			const { wasm } = compile(source)
+			const { instance, calls } = await instantiate(wasm)
+			const onScanned = instance.exports.on_scanned as (bearing: number) => void
+			onScanned(270.0)
+			const debugCalls = calls.filter((c) => c.name === "debugFloat")
+			expect(debugCalls.length).toBe(1)
+			expect(debugCalls[0]!.args[0]).toBeCloseTo(270.0)
+		})
+
+		it("on robotDeath handler uses robotId parameter", async () => {
+			const source = `${R}
+func tick() {}
+on robotDeath(robotId int) {
+  debug(robotId)
+}`
+			const { wasm } = compile(source)
+			const { instance, calls } = await instantiate(wasm)
+			const onRobotDeath = instance.exports.on_robotDeath as (robotId: number) => void
+			onRobotDeath(3)
+			const debugCalls = calls.filter((c) => c.name === "debugInt")
+			expect(debugCalls.length).toBe(1)
+			expect(debugCalls[0]!.args[0]).toBe(3)
+		})
+
+		it("on robotHit handler uses bearing parameter", async () => {
+			const source = `${R}
+func tick() {}
+on robotHit(bearing angle) {
+  debug(bearing)
+}`
+			const { wasm } = compile(source)
+			const { instance, calls } = await instantiate(wasm)
+			const onRobotHit = instance.exports.on_robotHit as (bearing: number) => void
+			onRobotHit(45.0)
+			const debugCalls = calls.filter((c) => c.name === "debugFloat")
+			expect(debugCalls.length).toBe(1)
+			expect(debugCalls[0]!.args[0]).toBeCloseTo(45.0)
+		})
+
+		it("event handler modifies global state", async () => {
+			const source = `${R}
+var hitCount int
+on hit(damage float, bearing angle) {
+  hitCount = hitCount + 1
+}
+func tick() {
+  debug(hitCount)
+}`
+			const { wasm } = compile(source)
+			const { instance, calls } = await instantiate(wasm)
+			const onHit = instance.exports.on_hit as (damage: number, bearing: number) => void
+			const tick = instance.exports.tick as () => void
+			onHit(10.0, 0.0)
+			onHit(10.0, 0.0)
+			tick()
+			const debugCalls = calls.filter((c) => c.name === "debugInt")
+			expect(debugCalls.length).toBe(1)
+			expect(debugCalls[0]!.args[0]).toBe(2)
+		})
+
+		it("event handler calls API functions", async () => {
+			const source = `${R}
+func tick() {}
+on scan(distance float, bearing angle) {
+  fire(3.0)
+  setGunHeading(bearing)
+}`
+			const { wasm } = compile(source)
+			const { instance, calls } = await instantiate(wasm)
+			const onScan = instance.exports.on_scan as (distance: number, bearing: number) => void
+			onScan(200.0, 135.0)
+			const fireCalls = calls.filter((c) => c.name === "fire")
+			expect(fireCalls.length).toBe(1)
+			expect(fireCalls[0]!.args[0]).toBeCloseTo(3.0)
+			const gunCalls = calls.filter((c) => c.name === "setGunHeading")
+			expect(gunCalls.length).toBe(1)
+			expect(gunCalls[0]!.args[0]).toBeCloseTo(135.0)
+		})
+
+		it("multiple event handlers in same robot", async () => {
+			const source = `${R}
+var scanCount int
+var hitCount int
+on scan(distance float, bearing angle) {
+  scanCount = scanCount + 1
+}
+on hit(damage float, bearing angle) {
+  hitCount = hitCount + 1
+}
+func tick() {
+  debug(scanCount)
+  debug(hitCount)
+}`
+			const { wasm } = compile(source)
+			const { instance, calls } = await instantiate(wasm)
+			const onScan = instance.exports.on_scan as (distance: number, bearing: number) => void
+			const onHit = instance.exports.on_hit as (damage: number, bearing: number) => void
+			const tick = instance.exports.tick as () => void
+			onScan(100.0, 0.0)
+			onScan(200.0, 90.0)
+			onScan(300.0, 180.0)
+			onHit(10.0, 45.0)
+			tick()
+			const debugCalls = calls.filter((c) => c.name === "debugInt")
+			expect(debugCalls.length).toBe(2)
+			expect(debugCalls[0]!.args[0]).toBe(3)
+			expect(debugCalls[1]!.args[0]).toBe(1)
+		})
+
+		it("event handler with local variables", async () => {
+			const source = `${R}
+func tick() {}
+on scan(distance float, bearing angle) {
+  half := distance / 2.0
+  debug(half)
+}`
+			const { wasm } = compile(source)
+			const { instance, calls } = await instantiate(wasm)
+			const onScan = instance.exports.on_scan as (distance: number, bearing: number) => void
+			onScan(200.0, 45.0)
+			const debugCalls = calls.filter((c) => c.name === "debugFloat")
+			expect(debugCalls.length).toBe(1)
+			expect(debugCalls[0]!.args[0]).toBeCloseTo(100.0)
+		})
+
+		it("event handler with control flow", async () => {
+			const source = `${R}
+func tick() {}
+on scan(distance float, bearing angle) {
+  if distance < 100.0 {
+    fire(3.0)
+  } else {
+    fire(1.0)
+  }
+}`
+			const { wasm } = compile(source)
+			const { instance, calls } = await instantiate(wasm)
+			const onScan = instance.exports.on_scan as (distance: number, bearing: number) => void
+			onScan(50.0, 0.0)
+			const fireCalls1 = calls.filter((c) => c.name === "fire")
+			expect(fireCalls1.length).toBe(1)
+			expect(fireCalls1[0]!.args[0]).toBeCloseTo(3.0)
+			onScan(200.0, 0.0)
+			const fireCalls2 = calls.filter((c) => c.name === "fire")
+			expect(fireCalls2.length).toBe(2)
+			expect(fireCalls2[1]!.args[0]).toBeCloseTo(1.0)
+		})
+
+		it("event handler coexists with user functions", async () => {
+			const source = `${R}
+func helper(x float) float {
+  return x * 2.0
+}
+func tick() {}
+on scan(distance float, bearing angle) {
+  result := helper(distance)
+  debug(result)
+}`
+			const { wasm } = compile(source)
+			const { instance, calls } = await instantiate(wasm)
+			const onScan = instance.exports.on_scan as (distance: number, bearing: number) => void
+			onScan(75.0, 0.0)
+			const debugCalls = calls.filter((c) => c.name === "debugFloat")
+			expect(debugCalls.length).toBe(1)
+			expect(debugCalls[0]!.args[0]).toBeCloseTo(150.0)
+		})
+
+		it("global state persists across event and tick calls", async () => {
+			const source = `${R}
+var totalDamage float
+on hit(damage float, bearing angle) {
+  totalDamage = totalDamage + damage
+}
+func tick() {
+  debug(totalDamage)
+}`
+			const { wasm } = compile(source)
+			const { instance, calls } = await instantiate(wasm)
+			const onHit = instance.exports.on_hit as (damage: number, bearing: number) => void
+			const tick = instance.exports.tick as () => void
+			onHit(10.0, 0.0)
+			tick()
+			onHit(15.5, 90.0)
+			tick()
+			onHit(5.0, 180.0)
+			tick()
+			const debugCalls = calls.filter((c) => c.name === "debugFloat")
+			expect(debugCalls.length).toBe(3)
+			expect(debugCalls[0]!.args[0]).toBeCloseTo(10.0)
+			expect(debugCalls[1]!.args[0]).toBeCloseTo(25.5)
+			expect(debugCalls[2]!.args[0]).toBeCloseTo(30.5)
+		})
+
+		it("all event types export correctly in single robot", async () => {
+			const source = `${R}
+on scan(distance float, bearing angle) { debug(1) }
+on hit(damage float, bearing angle) { debug(2) }
+on wallHit(bearing angle) { debug(3) }
+on bulletMiss() { debug(4) }
+on bulletHit(targetId int) { debug(5) }
+on scanned(bearing angle) { debug(6) }
+on robotDeath(robotId int) { debug(7) }
+on robotHit(bearing angle) { debug(8) }
+func tick() {}`
+			const { wasm } = compile(source)
+			const { instance } = await instantiate(wasm)
+			expect(typeof instance.exports.on_scan).toBe("function")
+			expect(typeof instance.exports.on_hit).toBe("function")
+			expect(typeof instance.exports.on_wallHit).toBe("function")
+			expect(typeof instance.exports.on_bulletMiss).toBe("function")
+			expect(typeof instance.exports.on_bulletHit).toBe("function")
+			expect(typeof instance.exports.on_scanned).toBe("function")
+			expect(typeof instance.exports.on_robotDeath).toBe("function")
+			expect(typeof instance.exports.on_robotHit).toBe("function")
+		})
+
+		it("event handler with init and global initializer", async () => {
+			const source = `${R}
+var scanThreshold float = 100.0
+func init() {
+  setSpeed(5.0)
+}
+func tick() {}
+on scan(distance float, bearing angle) {
+  if distance < scanThreshold {
+    fire(3.0)
+  }
+}`
+			const { wasm } = compile(source)
+			const { instance, calls } = await instantiate(wasm)
+			const init = instance.exports.init as () => void
+			init()
+			const onScan = instance.exports.on_scan as (distance: number, bearing: number) => void
+			onScan(50.0, 0.0)
+			const fireCalls = calls.filter((c) => c.name === "fire")
+			expect(fireCalls.length).toBe(1)
+			onScan(200.0, 0.0)
+			const fireCalls2 = calls.filter((c) => c.name === "fire")
+			expect(fireCalls2.length).toBe(1)
+		})
 	})
 
 	describe("constants", () => {
@@ -718,6 +1070,556 @@ func tick() {
 			const tick = instance.exports.tick as () => void
 			tick()
 			expect(calls.filter((c) => c.name === "debugFloat").length).toBe(1)
+		})
+	})
+
+	describe("structs — comprehensive", () => {
+		it("global struct: write and read a single field via debug()", async () => {
+			const source = `${R}
+type Point struct {
+  x float
+  y float
+}
+var p Point
+func tick() {
+  p.x = 5.0
+  debug(p.x)
+}`
+			const { wasm } = compile(source)
+			const { instance, calls } = await instantiate(wasm)
+			const tick = instance.exports.tick as () => void
+			tick()
+			const debugCalls = calls.filter((c) => c.name === "debugFloat")
+			expect(debugCalls.length).toBe(1)
+			expect(debugCalls[0]!.args[0]).toBeCloseTo(5.0)
+		})
+
+		it("global struct: field initializer with struct literal", async () => {
+			const source = `${R}
+type Point struct {
+  x float
+  y float
+}
+var p Point = Point{ x: 3.0, y: 4.0 }
+func tick() {
+  debug(p.x)
+  debug(p.y)
+}`
+			const { wasm } = compile(source)
+			const { instance, calls } = await instantiate(wasm)
+			const init = instance.exports.init as () => void
+			init()
+			const tick = instance.exports.tick as () => void
+			tick()
+			const debugCalls = calls.filter((c) => c.name === "debugFloat")
+			expect(debugCalls.length).toBe(2)
+			expect(debugCalls[0]!.args[0]).toBeCloseTo(3.0)
+			expect(debugCalls[1]!.args[0]).toBeCloseTo(4.0)
+		})
+
+		it("local struct: short decl with struct literal", async () => {
+			const source = `${R}
+type Point struct {
+  x float
+  y float
+}
+func tick() {
+  p := Point{ x: 10.0, y: 20.0 }
+  debug(p.y)
+}`
+			const { wasm } = compile(source)
+			const { instance, calls } = await instantiate(wasm)
+			const tick = instance.exports.tick as () => void
+			tick()
+			const debugCalls = calls.filter((c) => c.name === "debugFloat")
+			expect(debugCalls.length).toBe(1)
+			expect(debugCalls[0]!.args[0]).toBeCloseTo(20.0)
+		})
+
+		it("local struct: read both fields", async () => {
+			const source = `${R}
+type Point struct {
+  x float
+  y float
+}
+func tick() {
+  p := Point{ x: 7.0, y: 9.0 }
+  debug(p.x)
+  debug(p.y)
+}`
+			const { wasm } = compile(source)
+			const { instance, calls } = await instantiate(wasm)
+			const tick = instance.exports.tick as () => void
+			tick()
+			const debugCalls = calls.filter((c) => c.name === "debugFloat")
+			expect(debugCalls.length).toBe(2)
+			expect(debugCalls[0]!.args[0]).toBeCloseTo(7.0)
+			expect(debugCalls[1]!.args[0]).toBeCloseTo(9.0)
+		})
+
+		it("global struct: cross-field assignment (p.y = p.x)", async () => {
+			const source = `${R}
+type Point struct {
+  x float
+  y float
+}
+var p Point
+func tick() {
+  p.x = 42.0
+  p.y = p.x
+  debug(p.y)
+}`
+			const { wasm } = compile(source)
+			const { instance, calls } = await instantiate(wasm)
+			const tick = instance.exports.tick as () => void
+			tick()
+			const debugCalls = calls.filter((c) => c.name === "debugFloat")
+			expect(debugCalls.length).toBe(1)
+			expect(debugCalls[0]!.args[0]).toBeCloseTo(42.0)
+		})
+
+		it("multiple struct types used together", async () => {
+			const source = `${R}
+type Point struct {
+  x float
+  y float
+}
+type Size struct {
+  w float
+  h float
+}
+var pos Point
+var dim Size
+func tick() {
+  pos.x = 1.0
+  pos.y = 2.0
+  dim.w = 10.0
+  dim.h = 20.0
+  debug(pos.x)
+  debug(pos.y)
+  debug(dim.w)
+  debug(dim.h)
+}`
+			const { wasm } = compile(source)
+			const { instance, calls } = await instantiate(wasm)
+			const tick = instance.exports.tick as () => void
+			tick()
+			const debugCalls = calls.filter((c) => c.name === "debugFloat")
+			expect(debugCalls.length).toBe(4)
+			expect(debugCalls[0]!.args[0]).toBeCloseTo(1.0)
+			expect(debugCalls[1]!.args[0]).toBeCloseTo(2.0)
+			expect(debugCalls[2]!.args[0]).toBeCloseTo(10.0)
+			expect(debugCalls[3]!.args[0]).toBeCloseTo(20.0)
+		})
+
+		it("struct with mixed int and float fields", async () => {
+			const source = `${R}
+type Entity struct {
+  id int
+  x float
+  y float
+  health int
+}
+var e Entity
+func tick() {
+  e.id = 7
+  e.x = 100.5
+  e.y = 200.5
+  e.health = 99
+  debug(e.id)
+  debug(e.x)
+  debug(e.y)
+  debug(e.health)
+}`
+			const { wasm } = compile(source)
+			const { instance, calls } = await instantiate(wasm)
+			const tick = instance.exports.tick as () => void
+			tick()
+			const debugIntCalls = calls.filter((c) => c.name === "debugInt")
+			const debugFloatCalls = calls.filter((c) => c.name === "debugFloat")
+			expect(debugIntCalls.length).toBe(2)
+			expect(debugIntCalls[0]!.args[0]).toBe(7)
+			expect(debugIntCalls[1]!.args[0]).toBe(99)
+			expect(debugFloatCalls.length).toBe(2)
+			expect(debugFloatCalls[0]!.args[0]).toBeCloseTo(100.5)
+			expect(debugFloatCalls[1]!.args[0]).toBeCloseTo(200.5)
+		})
+
+		it("global struct: field persists across ticks", async () => {
+			const source = `${R}
+type Counter struct {
+  count int
+  total float
+}
+var c Counter
+func tick() {
+  c.count = c.count + 1
+  c.total = c.total + 1.5
+  debug(c.count)
+  debug(c.total)
+}`
+			const { wasm } = compile(source)
+			const { instance, calls } = await instantiate(wasm)
+			const tick = instance.exports.tick as () => void
+			tick()
+			tick()
+			tick()
+			const debugIntCalls = calls.filter((c) => c.name === "debugInt")
+			const debugFloatCalls = calls.filter((c) => c.name === "debugFloat")
+			expect(debugIntCalls.length).toBe(3)
+			expect(debugIntCalls[0]!.args[0]).toBe(1)
+			expect(debugIntCalls[1]!.args[0]).toBe(2)
+			expect(debugIntCalls[2]!.args[0]).toBe(3)
+			expect(debugFloatCalls.length).toBe(3)
+			expect(debugFloatCalls[0]!.args[0]).toBeCloseTo(1.5)
+			expect(debugFloatCalls[1]!.args[0]).toBeCloseTo(3.0)
+			expect(debugFloatCalls[2]!.args[0]).toBeCloseTo(4.5)
+		})
+
+		it("local struct: field assignment after init", async () => {
+			const source = `${R}
+type Point struct {
+  x float
+  y float
+}
+func tick() {
+  p := Point{ x: 1.0, y: 2.0 }
+  p.x = 99.0
+  debug(p.x)
+  debug(p.y)
+}`
+			const { wasm } = compile(source)
+			const { instance, calls } = await instantiate(wasm)
+			const tick = instance.exports.tick as () => void
+			tick()
+			const debugCalls = calls.filter((c) => c.name === "debugFloat")
+			expect(debugCalls.length).toBe(2)
+			expect(debugCalls[0]!.args[0]).toBeCloseTo(99.0)
+			expect(debugCalls[1]!.args[0]).toBeCloseTo(2.0)
+		})
+
+		it("local struct: var decl with struct literal", async () => {
+			const source = `${R}
+type Point struct {
+  x float
+  y float
+}
+func tick() {
+  var p Point = Point{ x: 5.5, y: 6.5 }
+  debug(p.x)
+  debug(p.y)
+}`
+			const { wasm } = compile(source)
+			const { instance, calls } = await instantiate(wasm)
+			const tick = instance.exports.tick as () => void
+			tick()
+			const debugCalls = calls.filter((c) => c.name === "debugFloat")
+			expect(debugCalls.length).toBe(2)
+			expect(debugCalls[0]!.args[0]).toBeCloseTo(5.5)
+			expect(debugCalls[1]!.args[0]).toBeCloseTo(6.5)
+		})
+
+		it("local struct with mixed int and float fields", async () => {
+			const source = `${R}
+type Mixed struct {
+  id int
+  value float
+}
+func tick() {
+  m := Mixed{ id: 42, value: 3.14 }
+  debug(m.id)
+  debug(m.value)
+}`
+			const { wasm } = compile(source)
+			const { instance, calls } = await instantiate(wasm)
+			const tick = instance.exports.tick as () => void
+			tick()
+			const debugIntCalls = calls.filter((c) => c.name === "debugInt")
+			const debugFloatCalls = calls.filter((c) => c.name === "debugFloat")
+			expect(debugIntCalls.length).toBe(1)
+			expect(debugIntCalls[0]!.args[0]).toBe(42)
+			expect(debugFloatCalls.length).toBe(1)
+			expect(debugFloatCalls[0]!.args[0]).toBeCloseTo(3.14)
+		})
+
+		it("local struct: cross-field assignment", async () => {
+			const source = `${R}
+type Point struct {
+  x float
+  y float
+}
+func tick() {
+  p := Point{ x: 55.0, y: 0.0 }
+  p.y = p.x
+  debug(p.y)
+}`
+			const { wasm } = compile(source)
+			const { instance, calls } = await instantiate(wasm)
+			const tick = instance.exports.tick as () => void
+			tick()
+			const debugCalls = calls.filter((c) => c.name === "debugFloat")
+			expect(debugCalls.length).toBe(1)
+			expect(debugCalls[0]!.args[0]).toBeCloseTo(55.0)
+		})
+
+		it("global struct initializer with user-defined init", async () => {
+			const source = `${R}
+type Point struct {
+  x float
+  y float
+}
+var origin Point = Point{ x: 0.0, y: 0.0 }
+var target Point = Point{ x: 100.0, y: 200.0 }
+func init() {
+  debug(target.x)
+}
+func tick() {
+  debug(target.y)
+}`
+			const { wasm } = compile(source)
+			const { instance, calls } = await instantiate(wasm)
+			const init = instance.exports.init as () => void
+			init()
+			const tick = instance.exports.tick as () => void
+			tick()
+			const debugCalls = calls.filter((c) => c.name === "debugFloat")
+			expect(debugCalls.length).toBe(2)
+			expect(debugCalls[0]!.args[0]).toBeCloseTo(100.0)
+			expect(debugCalls[1]!.args[0]).toBeCloseTo(200.0)
+		})
+	})
+
+	describe("arrays", () => {
+		it("stores and loads global int array element", async () => {
+			const source = `${R}
+var nums [3]int
+func tick() {
+  nums[0] = 42
+  debug(nums[0])
+}`
+			const { wasm } = compile(source)
+			const { instance, calls } = await instantiate(wasm)
+			const tick = instance.exports.tick as () => void
+			tick()
+			const debugCalls = calls.filter((c) => c.name === "debugInt")
+			expect(debugCalls.length).toBe(1)
+			expect(debugCalls[0]!.args[0]).toBe(42)
+		})
+
+		it("stores and loads global float array element", async () => {
+			const source = `${R}
+var fs [2]float
+func tick() {
+  fs[1] = 3.14
+  debug(fs[1])
+}`
+			const { wasm } = compile(source)
+			const { instance, calls } = await instantiate(wasm)
+			const tick = instance.exports.tick as () => void
+			tick()
+			const debugCalls = calls.filter((c) => c.name === "debugFloat")
+			expect(debugCalls.length).toBe(1)
+			expect(debugCalls[0]!.args[0]).toBeCloseTo(3.14)
+		})
+
+		it("traps on out-of-bounds array access", async () => {
+			const source = `${R}
+var nums [3]int
+func tick() {
+  debug(nums[5])
+}`
+			const { wasm } = compile(source)
+			const { instance } = await instantiate(wasm)
+			const tick = instance.exports.tick as () => void
+			expect(() => tick()).toThrow()
+		})
+
+		it("traps on negative array index", async () => {
+			const source = `${R}
+var nums [3]int
+func tick() {
+  debug(nums[-1])
+}`
+			const { wasm } = compile(source)
+			const { instance } = await instantiate(wasm)
+			const tick = instance.exports.tick as () => void
+			expect(() => tick()).toThrow()
+		})
+
+		it("accesses array elements with variable index", async () => {
+			const source = `${R}
+var nums [3]int
+func tick() {
+  i := 0
+  nums[i] = 10
+  i = 1
+  nums[i] = 20
+  debug(nums[0])
+  debug(nums[1])
+}`
+			const { wasm } = compile(source)
+			const { instance, calls } = await instantiate(wasm)
+			const tick = instance.exports.tick as () => void
+			tick()
+			const debugCalls = calls.filter((c) => c.name === "debugInt")
+			expect(debugCalls.length).toBe(2)
+			expect(debugCalls[0]!.args[0]).toBe(10)
+			expect(debugCalls[1]!.args[0]).toBe(20)
+		})
+
+		it("uses array elements in arithmetic expression", async () => {
+			const source = `${R}
+var nums [3]int
+func tick() {
+  nums[0] = 10
+  nums[1] = 20
+  result := nums[0] + nums[1]
+  debug(result)
+}`
+			const { wasm } = compile(source)
+			const { instance, calls } = await instantiate(wasm)
+			const tick = instance.exports.tick as () => void
+			tick()
+			const debugCalls = calls.filter((c) => c.name === "debugInt")
+			expect(debugCalls.length).toBe(1)
+			expect(debugCalls[0]!.args[0]).toBe(30)
+		})
+
+		it("persists global array values across tick calls", async () => {
+			const source = `${R}
+var nums [3]int
+func tick() {
+  nums[0] = nums[0] + 1
+  debug(nums[0])
+}`
+			const { wasm } = compile(source)
+			const { instance, calls } = await instantiate(wasm)
+			const tick = instance.exports.tick as () => void
+			tick()
+			tick()
+			tick()
+			const debugCalls = calls.filter((c) => c.name === "debugInt")
+			expect(debugCalls.length).toBe(3)
+			expect(debugCalls[0]!.args[0]).toBe(1)
+			expect(debugCalls[1]!.args[0]).toBe(2)
+			expect(debugCalls[2]!.args[0]).toBe(3)
+		})
+
+		it("stores values in all array positions", async () => {
+			const source = `${R}
+var nums [3]int
+func tick() {
+  nums[0] = 100
+  nums[1] = 200
+  nums[2] = 300
+  debug(nums[0])
+  debug(nums[1])
+  debug(nums[2])
+}`
+			const { wasm } = compile(source)
+			const { instance, calls } = await instantiate(wasm)
+			const tick = instance.exports.tick as () => void
+			tick()
+			const debugCalls = calls.filter((c) => c.name === "debugInt")
+			expect(debugCalls.length).toBe(3)
+			expect(debugCalls[0]!.args[0]).toBe(100)
+			expect(debugCalls[1]!.args[0]).toBe(200)
+			expect(debugCalls[2]!.args[0]).toBe(300)
+		})
+
+		it("supports compound assignment on array elements", async () => {
+			const source = `${R}
+var nums [3]int
+func tick() {
+  nums[0] = 10
+  nums[0] += 5
+  debug(nums[0])
+}`
+			const { wasm } = compile(source)
+			const { instance, calls } = await instantiate(wasm)
+			const tick = instance.exports.tick as () => void
+			tick()
+			const debugCalls = calls.filter((c) => c.name === "debugInt")
+			expect(debugCalls.length).toBe(1)
+			expect(debugCalls[0]!.args[0]).toBe(15)
+		})
+
+		it("iterates over array with for loop", async () => {
+			const source = `${R}
+var nums [3]int
+func tick() {
+  nums[0] = 10
+  nums[1] = 20
+  nums[2] = 30
+  for i := 0; i < 3; i += 1 {
+    debug(nums[i])
+  }
+}`
+			const { wasm } = compile(source)
+			const { instance, calls } = await instantiate(wasm)
+			const tick = instance.exports.tick as () => void
+			tick()
+			const debugCalls = calls.filter((c) => c.name === "debugInt")
+			expect(debugCalls.length).toBe(3)
+			expect(debugCalls[0]!.args[0]).toBe(10)
+			expect(debugCalls[1]!.args[0]).toBe(20)
+			expect(debugCalls[2]!.args[0]).toBe(30)
+		})
+
+		it("traps on out-of-bounds store", async () => {
+			const source = `${R}
+var nums [3]int
+func tick() {
+  nums[3] = 42
+}`
+			const { wasm } = compile(source)
+			const { instance } = await instantiate(wasm)
+			const tick = instance.exports.tick as () => void
+			expect(() => tick()).toThrow()
+		})
+
+		it("handles local array declared with var", async () => {
+			const source = `${R}
+func tick() {
+  var xs [3]int
+  xs[0] = 1
+  xs[1] = 2
+  xs[2] = 3
+  debug(xs[2])
+}`
+			const { wasm } = compile(source)
+			const { instance, calls } = await instantiate(wasm)
+			const tick = instance.exports.tick as () => void
+			tick()
+			const debugCalls = calls.filter((c) => c.name === "debugInt")
+			expect(debugCalls.length).toBe(1)
+			expect(debugCalls[0]!.args[0]).toBe(3)
+		})
+
+		it("initializes global array in init and reads in tick", async () => {
+			const source = `${R}
+var nums [3]int
+func init() {
+  nums[0] = 10
+  nums[1] = 20
+  nums[2] = 30
+}
+func tick() {
+  debug(nums[0])
+  debug(nums[1])
+  debug(nums[2])
+}`
+			const { wasm } = compile(source)
+			const { instance, calls } = await instantiate(wasm)
+			const init = instance.exports.init as () => void
+			init()
+			const tick = instance.exports.tick as () => void
+			tick()
+			const debugCalls = calls.filter((c) => c.name === "debugInt")
+			expect(debugCalls.length).toBe(3)
+			expect(debugCalls[0]!.args[0]).toBe(10)
+			expect(debugCalls[1]!.args[0]).toBe(20)
+			expect(debugCalls[2]!.args[0]).toBe(30)
 		})
 	})
 })

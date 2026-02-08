@@ -1340,13 +1340,23 @@ class WasmCodegen {
 		const field = objType.fields.find((f) => f.name === expr.field)
 		if (!field) return [OP_I32_CONST, ...signedLEB128(0)]
 
-		// If object is an identifier that's a local composite
+		// If object is an identifier that's a local composite stored in memory
 		if (expr.object.kind === "Ident") {
 			const compositeBase = ctx.locals.get(`__composite_${expr.object.name}`)
 			if (compositeBase) {
-				// Field is at compositeBase.index + fieldSlotIndex
-				const slotIndex = this.getFieldSlotIndex(objType, expr.field)
-				return [OP_LOCAL_GET, ...unsignedLEB128(compositeBase.index + slotIndex)]
+				// compositeBase.index holds an i32 local with the memory base address
+				const code: number[] = []
+				code.push(OP_LOCAL_GET, ...unsignedLEB128(compositeBase.index))
+				if (field.offset > 0) {
+					code.push(OP_I32_CONST, ...signedLEB128(field.offset))
+					code.push(OP_I32_ADD)
+				}
+				if (isFloat(field.type)) {
+					code.push(OP_F32_LOAD, 0x02, 0x00)
+				} else {
+					code.push(OP_I32_LOAD, 0x02, 0x00)
+				}
+				return code
 			}
 		}
 
@@ -1379,14 +1389,23 @@ class WasmCodegen {
 		const field = objType.fields.find((f) => f.name === target.field)
 		if (!field) return []
 
-		// Check if local composite
+		// Check if local composite stored in memory
 		if (target.object.kind === "Ident") {
 			const compositeBase = ctx.locals.get(`__composite_${target.object.name}`)
 			if (compositeBase) {
-				const slotIndex = this.getFieldSlotIndex(objType, target.field)
+				// compositeBase.index holds an i32 local with the memory base address
 				const code: number[] = []
+				code.push(OP_LOCAL_GET, ...unsignedLEB128(compositeBase.index))
+				if (field.offset > 0) {
+					code.push(OP_I32_CONST, ...signedLEB128(field.offset))
+					code.push(OP_I32_ADD)
+				}
 				code.push(...this.compileExpr(value, ctx))
-				code.push(OP_LOCAL_SET, ...unsignedLEB128(compositeBase.index + slotIndex))
+				if (isFloat(field.type)) {
+					code.push(OP_F32_STORE, 0x02, 0x00)
+				} else {
+					code.push(OP_I32_STORE, 0x02, 0x00)
+				}
 				return code
 			}
 		}
@@ -1422,13 +1441,20 @@ class WasmCodegen {
 		if (target.object.kind === "Ident") {
 			const compositeBase = ctx.locals.get(`__composite_${target.object.name}`)
 			if (compositeBase) {
-				const slotIndex = this.getFieldSlotIndex(objType, target.field)
-				return [
-					OP_LOCAL_GET,
-					...unsignedLEB128(tempLocal),
-					OP_LOCAL_SET,
-					...unsignedLEB128(compositeBase.index + slotIndex),
-				]
+				// compositeBase.index holds an i32 local with the memory base address
+				const code: number[] = []
+				code.push(OP_LOCAL_GET, ...unsignedLEB128(compositeBase.index))
+				if (field.offset > 0) {
+					code.push(OP_I32_CONST, ...signedLEB128(field.offset))
+					code.push(OP_I32_ADD)
+				}
+				code.push(OP_LOCAL_GET, ...unsignedLEB128(tempLocal))
+				if (isFloat(field.type)) {
+					code.push(OP_F32_STORE, 0x02, 0x00)
+				} else {
+					code.push(OP_I32_STORE, 0x02, 0x00)
+				}
+				return code
 			}
 		}
 
@@ -1678,6 +1704,11 @@ class WasmCodegen {
 	/** Compute the base memory address for an expression (for field/index access) */
 	private compileAddress(expr: Expr, ctx: CompilingFunc): number[] {
 		if (expr.kind === "Ident") {
+			// Check if this is a local composite stored in memory
+			const compositeBase = ctx.locals.get(`__composite_${expr.name}`)
+			if (compositeBase) {
+				return [OP_LOCAL_GET, ...unsignedLEB128(compositeBase.index)]
+			}
 			const sym = this.analysis.symbols.get(expr.name)
 			if (sym) {
 				return [OP_I32_CONST, ...signedLEB128(sym.location)]
@@ -1840,17 +1871,6 @@ class WasmCodegen {
 			}
 		}
 		return code
-	}
-
-	/** Get the local slot index for a field within a struct's flattened slots */
-	private getFieldSlotIndex(structType: RBLType, fieldName: string): number {
-		if (structType.kind !== "struct") return 0
-		let slot = 0
-		for (const f of structType.fields) {
-			if (f.name === fieldName) return slot
-			slot += Math.ceil(typeSize(f.type) / 4) // each 4-byte value is one slot
-		}
-		return 0
 	}
 
 	// --- Type resolution helper ---
