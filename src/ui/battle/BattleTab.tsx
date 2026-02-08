@@ -88,14 +88,18 @@ export function BattleTab() {
 	}, [])
 
 	const files = useRobotFileStore((s) => s.files)
-	const toggleSelected = useRobotFileStore((s) => s.toggleSelected)
+	const roster = useBattleStore((s) => s.roster)
+	const addToRoster = useBattleStore((s) => s.addToRoster)
+	const removeFromRoster = useBattleStore((s) => s.removeFromRoster)
 
 	const handleBattle = useCallback(async () => {
 		// Clean up previous game loop
 		destroyGameLoop()
 
-		// Only compile selected robot files
-		const selectedFiles = files.filter((f) => f.selected)
+		// Resolve roster entries to files (same file can appear multiple times)
+		const selectedFiles = roster
+			.map((entry) => files.find((f) => f.id === entry.fileId))
+			.filter((f): f is (typeof files)[number] => f != null)
 
 		// Compile all robot files to WASM modules
 		const compiledRobots: {
@@ -243,6 +247,7 @@ export function BattleTab() {
 		setStatus,
 		speed,
 		files,
+		roster,
 		tickCount,
 	])
 
@@ -358,43 +363,100 @@ export function BattleTab() {
 					border: "1px solid #e0e0e0",
 				}}
 			>
-				<strong
+				<div
 					style={{
-						fontSize: 12,
-						color: "#666",
-						textTransform: "uppercase",
-						letterSpacing: "0.04em",
-						display: "block",
-						marginBottom: 8,
+						display: "flex",
+						alignItems: "center",
+						justifyContent: "space-between",
+						marginBottom: roster.length > 0 ? 8 : 0,
 					}}
 				>
-					Select Robots
-				</strong>
-				<div style={{ display: "flex", flexWrap: "wrap", gap: 8 }}>
-					{files.map((file) => (
-						<label
-							key={file.id}
+					<strong
+						style={{
+							fontSize: 12,
+							color: "#666",
+							textTransform: "uppercase",
+							letterSpacing: "0.04em",
+						}}
+					>
+						Battle Roster
+					</strong>
+					<div style={{ display: "flex", alignItems: "center", gap: 6 }}>
+						<select
+							id="add-robot-select"
 							style={{
-								display: "flex",
-								alignItems: "center",
-								gap: 6,
+								fontSize: 13,
 								padding: "4px 8px",
 								borderRadius: 6,
-								background: file.selected ? "#eef2ff" : "#f5f5f5",
-								border: file.selected ? "1px solid #c7d2fe" : "1px solid #e0e0e0",
-								cursor: "pointer",
-								fontSize: 13,
+								border: "1px solid #d0d0d0",
+								background: "#fff",
+								color: "#333",
+							}}
+							defaultValue=""
+							onChange={(e) => {
+								if (e.target.value) {
+									addToRoster(e.target.value)
+									e.target.value = ""
+								}
 							}}
 						>
-							<input
-								type="checkbox"
-								checked={file.selected}
-								onChange={() => toggleSelected(file.id)}
-							/>
-							{file.filename}
-						</label>
-					))}
+							<option value="" disabled>
+								Add robot...
+							</option>
+							{files.map((file) => (
+								<option key={file.id} value={file.id}>
+									{file.filename}
+								</option>
+							))}
+						</select>
+					</div>
 				</div>
+				{roster.length > 0 && (
+					<div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>
+						{roster.map((entry) => {
+							const file = files.find((f) => f.id === entry.fileId)
+							if (!file) return null
+							return (
+								<div
+									key={entry.id}
+									style={{
+										display: "flex",
+										alignItems: "center",
+										gap: 6,
+										padding: "4px 8px 4px 10px",
+										borderRadius: 6,
+										background: "#eef2ff",
+										border: "1px solid #c7d2fe",
+										fontSize: 13,
+									}}
+								>
+									{file.filename}
+									<button
+										type="button"
+										onClick={() => removeFromRoster(entry.id)}
+										style={{
+											background: "none",
+											border: "none",
+											cursor: "pointer",
+											color: "#999",
+											fontSize: 14,
+											padding: "0 2px",
+											lineHeight: 1,
+										}}
+										title="Remove"
+									>
+										x
+									</button>
+								</div>
+							)
+						})}
+					</div>
+				)}
+				{roster.length === 0 && (
+					<div style={{ color: "#999", fontSize: 13 }}>
+						No robots added. Use the dropdown above to add robots to the battle.
+					</div>
+				)}
 			</div>
 
 			<div style={{ display: "flex", alignItems: "center", gap: 12 }}>

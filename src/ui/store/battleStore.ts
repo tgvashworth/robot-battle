@@ -3,6 +3,11 @@ import type { GameState } from "../../../spec/simulation"
 
 export type BattleStatus = "idle" | "running" | "finished"
 
+export interface RosterEntry {
+	readonly id: string
+	readonly fileId: string
+}
+
 export interface BattleState {
 	status: BattleStatus
 	speed: number
@@ -11,6 +16,9 @@ export interface BattleState {
 	battleLog: string[]
 	tickCount: number
 	currentState: GameState | null
+	roster: RosterEntry[]
+	addToRoster: (fileId: string) => void
+	removeFromRoster: (id: string) => void
 	startBattle: () => void
 	stop: () => void
 	setStatus: (status: BattleStatus) => void
@@ -30,6 +38,19 @@ export const useBattleStore = create<BattleState>((set) => ({
 	battleLog: [],
 	tickCount: 2000,
 	currentState: null,
+	roster: [],
+
+	addToRoster: (fileId: string) => {
+		set((state) => ({
+			roster: [...state.roster, { id: crypto.randomUUID(), fileId }],
+		}))
+	},
+
+	removeFromRoster: (id: string) => {
+		set((state) => ({
+			roster: state.roster.filter((r) => r.id !== id),
+		}))
+	},
 
 	startBattle: () => {
 		set({ status: "running", currentTick: 0, battleLog: [], currentState: null })
