@@ -1,0 +1,22 @@
+robot "NothingBot"
+
+type IntResult struct {
+	value int
+}
+type AngleResult struct {
+	value angle
+}
+
+func tick() {
+	var intResult IntResult = getIntResult()
+	var stringResult AngleResult = getAngleResult()
+	var invalide IntResult = getAngleResult() // This should cause a type error
+}
+
+func getIntResult() IntResult {
+	return IntResult{value: 42}
+}
+
+func getAngleResult() AngleResult {
+	return AngleResult{value: angle(90.0)}
+}

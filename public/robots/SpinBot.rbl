@@ -6,24 +6,24 @@ robot "SpinBot"
 var direction int = 1
 
 func tick() {
-	setSpeed(50)
-	setTurnRate(5 * direction)
-	setGunTurnRate(10)
+	setSpeed(50.0)
+	setTurnRate(5.0 * float(direction))
+	setGunTurnRate(10.0)
 
-	if getGunHeat() == 0 {
-		fire(1)
+	if getGunHeat() == 0.0 {
+		fire(1.0)
 	}
 }
 
 on scan(distance float, bearing angle) {
 	setGunHeading(bearing)
-	fire(2)
+	fire(2.0)
 }
 
 on hit(damage float, bearing angle) {
 	// Reverse direction when hit
 	direction = direction * -1
-	setSpeed(80)
+	setSpeed(80.0)
 }
 
 on wallHit(bearing angle) {

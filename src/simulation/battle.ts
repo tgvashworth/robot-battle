@@ -1,13 +1,18 @@
 import type {
 	Battle,
 	BattleResult,
+	BulletFiredEvent,
+	BulletState,
+	BulletWallEvent,
 	GameConfig,
+	GameEvent,
 	GameState,
 	RobotAPI,
 	RobotModule,
 	RobotState,
 	RoundResult,
 	TickResult,
+	WallHitEvent,
 } from "../../spec/simulation"
 import { PRNG } from "./prng"
 
@@ -43,6 +48,23 @@ interface InternalRobot {
 	intendedGunTurnRate: number
 	intendedRadarTurnRate: number
 	intendedFire: number
+
+	// Pending event callbacks
+	pendingWallHitBearing: number | undefined
+	pendingBulletMiss: boolean
+}
+
+/**
+ * Internal mutable state for a bullet in flight.
+ */
+interface InternalBullet {
+	id: number
+	ownerId: number
+	x: number
+	y: number
+	heading: number
+	speed: number
+	power: number
 }
 
 export function createBattle(config: GameConfig, robots: RobotModule[]): Battle {
@@ -52,6 +74,8 @@ export function createBattle(config: GameConfig, robots: RobotModule[]): Battle 
 	let roundOver = false
 	let battleOver = false
 	const allRoundResults: RoundResult[] = []
+	let bullets: InternalBullet[] = []
+	let nextBulletId = 0
 
 	// Initialize robots
 	const internalRobots: InternalRobot[] = robots.map((module, i) => {
@@ -65,21 +89,91 @@ export function createBattle(config: GameConfig, robots: RobotModule[]): Battle 
 		robot.module.init(api)
 	}
 
+	// Accumulated events for the current tick
+	let tickEvents: GameEvent[] = []
+
 	function snapshot(): GameState {
 		return {
 			tick,
 			round,
 			arena: config.arena,
 			robots: internalRobots.map(snapshotRobot),
-			bullets: [],
+			bullets: bullets.map(snapshotBullet),
 			mines: [],
 			cookies: [],
-			events: [],
+			events: [...tickEvents],
 		}
 	}
 
 	function doTick(): TickResult {
 		tick++
+
+		// Clear events for this tick
+		tickEvents = []
+
+		// Reset per-tick intents (speed persists)
+		for (const robot of internalRobots) {
+			if (!robot.alive) continue
+			robot.intendedTurnRate = 0
+			robot.intendedGunTurnRate = 0
+			robot.intendedRadarTurnRate = 0
+			robot.intendedFire = 0
+		}
+
+		// Step 1: Move bullets
+		for (const bullet of bullets) {
+			const rad = (bullet.heading * Math.PI) / 180
+			bullet.x += bullet.speed * Math.sin(rad)
+			bullet.y -= bullet.speed * Math.cos(rad)
+		}
+
+		// Step 3: Remove bullets that exit arena bounds
+		const survivingBullets: InternalBullet[] = []
+		for (const bullet of bullets) {
+			if (
+				bullet.x < 0 ||
+				bullet.x > config.arena.width ||
+				bullet.y < 0 ||
+				bullet.y > config.arena.height
+			) {
+				// Bullet hit wall — emit event and queue callback for shooter
+				const wallEvent: BulletWallEvent = {
+					type: "bullet_wall",
+					bulletId: bullet.id,
+					shooterId: bullet.ownerId,
+					x: bullet.x,
+					y: bullet.y,
+				}
+				tickEvents.push(wallEvent)
+
+				// Queue onBulletMiss callback for the shooter
+				const shooter = internalRobots.find((r) => r.id === bullet.ownerId)
+				if (shooter?.alive) {
+					shooter.pendingBulletMiss = true
+				}
+			} else {
+				survivingBullets.push(bullet)
+			}
+		}
+		bullets = survivingBullets
+
+		// Deliver wall hit callbacks before tick()
+		for (const robot of internalRobots) {
+			if (!robot.alive) continue
+			if (robot.pendingWallHitBearing !== undefined) {
+				robot.module.onWallHit(robot.pendingWallHitBearing)
+				robot.pendingWallHitBearing = undefined
+			}
+		}
+
+		// Deliver bullet miss callbacks before tick()
+		for (const robot of internalRobots) {
+			if (!robot.alive) continue
+			if (robot.pendingBulletMiss) {
+				robot.module.onBulletMiss()
+				robot.pendingBulletMiss = false
+			}
+		}
 
 		// Call tick() on each alive robot
 		for (const robot of internalRobots) {
@@ -92,7 +186,65 @@ export function createBattle(config: GameConfig, robots: RobotModule[]): Battle 
 		// Apply movement intents
 		for (const robot of internalRobots) {
 			if (!robot.alive) continue
-			applyMovement(robot, config)
+			applyMovement(robot, config, tickEvents)
+		}
+
+		// Step 19: Process fire intents
+		for (const robot of internalRobots) {
+			if (!robot.alive) continue
+			if (robot.intendedFire <= 0) continue
+			if (robot.gunHeat > 0) continue
+
+			const power = clamp(
+				robot.intendedFire,
+				config.physics.minFirePower,
+				config.physics.maxFirePower,
+			)
+			const energyCost = power * config.physics.fireCostFactor
+			if (robot.energy < energyCost) continue
+
+			// Deduct energy
+			robot.energy -= energyCost
+
+			// Set gun heat
+			robot.gunHeat = 1 + power / 5
+
+			// Calculate bullet spawn position (gun tip = robot pos + robotRadius in gunHeading direction)
+			const gunRad = (robot.gunHeading * Math.PI) / 180
+			const spawnX = robot.x + config.physics.robotRadius * Math.sin(gunRad)
+			const spawnY = robot.y - config.physics.robotRadius * Math.cos(gunRad)
+
+			// Calculate bullet speed
+			const bulletSpeed =
+				config.physics.bulletSpeedBase - config.physics.bulletSpeedPowerFactor * power
+
+			// Create bullet
+			const bulletId = nextBulletId++
+			const bullet: InternalBullet = {
+				id: bulletId,
+				ownerId: robot.id,
+				x: spawnX,
+				y: spawnY,
+				heading: robot.gunHeading,
+				speed: bulletSpeed,
+				power,
+			}
+			bullets.push(bullet)
+
+			// Track stats
+			robot.bulletsFired++
+
+			// Emit event
+			const firedEvent: BulletFiredEvent = {
+				type: "bullet_fired",
+				robotId: robot.id,
+				bulletId,
+				x: spawnX,
+				y: spawnY,
+				heading: robot.gunHeading,
+				power,
+			}
+			tickEvents.push(firedEvent)
 		}
 
 		// Check round end conditions
@@ -188,6 +340,8 @@ export function createBattle(config: GameConfig, robots: RobotModule[]): Battle 
 			round++
 			tick = 0
 			roundOver = false
+			bullets = []
+			nextBulletId = 0
 			for (const robot of internalRobots) {
 				resetRobot(robot, config, rng)
 			}
@@ -238,6 +392,8 @@ function createInternalRobot(
 		intendedGunTurnRate: 0,
 		intendedRadarTurnRate: 0,
 		intendedFire: 0,
+		pendingWallHitBearing: undefined,
+		pendingBulletMiss: false,
 	}
 }
 
@@ -262,6 +418,8 @@ function resetRobot(robot: InternalRobot, config: GameConfig, rng: PRNG) {
 	robot.intendedGunTurnRate = 0
 	robot.intendedRadarTurnRate = 0
 	robot.intendedFire = 0
+	robot.pendingWallHitBearing = undefined
+	robot.pendingBulletMiss = false
 }
 
 function snapshotRobot(robot: InternalRobot): RobotState {
@@ -290,7 +448,19 @@ function snapshotRobot(robot: InternalRobot): RobotState {
 	}
 }
 
-function applyMovement(robot: InternalRobot, config: GameConfig) {
+function snapshotBullet(bullet: InternalBullet): BulletState {
+	return {
+		id: bullet.id,
+		ownerId: bullet.ownerId,
+		x: bullet.x,
+		y: bullet.y,
+		heading: bullet.heading,
+		speed: bullet.speed,
+		power: bullet.power,
+	}
+}
+
+function applyMovement(robot: InternalRobot, config: GameConfig, events: GameEvent[]) {
 	// Apply turn rate
 	robot.heading = normalizeAngle(
 		robot.heading +
@@ -307,13 +477,63 @@ function applyMovement(robot: InternalRobot, config: GameConfig) {
 
 	// Move
 	const rad = ((robot.heading - 90) * Math.PI) / 180 // 0=north, clockwise
-	robot.x += Math.cos(rad) * robot.speed * 0.1
-	robot.y += Math.sin(rad) * robot.speed * 0.1
+	const preClampX = robot.x + Math.cos(rad) * robot.speed * 0.1
+	const preClampY = robot.y + Math.sin(rad) * robot.speed * 0.1
 
 	// Clamp to arena
 	const r = config.physics.robotRadius
-	robot.x = clamp(robot.x, r, config.arena.width - r)
-	robot.y = clamp(robot.y, r, config.arena.height - r)
+	const clampedX = clamp(preClampX, r, config.arena.width - r)
+	const clampedY = clamp(preClampY, r, config.arena.height - r)
+
+	// Detect wall collision
+	const hitWall = clampedX !== preClampX || clampedY !== preClampY
+	if (hitWall) {
+		const damage = Math.abs(robot.speed) * config.physics.wallDamageSpeedFactor
+		robot.health = Math.max(0, robot.health - damage)
+		robot.damageReceived += damage
+
+		// Determine wall bearing relative to robot heading
+		let wallBearing = 0
+		if (preClampX < r) {
+			// Hit west wall
+			wallBearing = normalizeAngle(270 - robot.heading)
+		} else if (preClampX > config.arena.width - r) {
+			// Hit east wall
+			wallBearing = normalizeAngle(90 - robot.heading)
+		} else if (preClampY < r) {
+			// Hit north wall
+			wallBearing = normalizeAngle(0 - robot.heading)
+		} else if (preClampY > config.arena.height - r) {
+			// Hit south wall
+			wallBearing = normalizeAngle(180 - robot.heading)
+		}
+		// Normalize bearing to [-180, 180]
+		if (wallBearing > 180) wallBearing -= 360
+
+		const wallEvent: WallHitEvent = {
+			type: "wall_hit",
+			robotId: robot.id,
+			x: clampedX,
+			y: clampedY,
+			damage,
+			bearing: wallBearing,
+		}
+		events.push(wallEvent)
+
+		// Store pending callback for next tick
+		robot.pendingWallHitBearing = wallBearing
+
+		// Stop the robot on wall hit
+		robot.speed = 0
+
+		// Check if robot died from wall damage
+		if (robot.health <= 0) {
+			robot.alive = false
+		}
+	}
+
+	robot.x = clampedX
+	robot.y = clampedY
 
 	// Gun turn
 	robot.gunHeading = normalizeAngle(

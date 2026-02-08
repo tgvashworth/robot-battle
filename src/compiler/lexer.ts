@@ -245,6 +245,7 @@ const ONE_CHAR_OPS: Record<string, TokenKind> = {
 	",": TokenKind.Comma,
 	".": TokenKind.Dot,
 	":": TokenKind.Colon,
+	";": TokenKind.Semicolon,
 }
 
 function isDigit(ch: string): boolean {

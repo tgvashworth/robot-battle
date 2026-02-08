@@ -22,6 +22,9 @@ export interface BattleRenderer {
 	/** Initialize the renderer on a canvas element. */
 	init(canvas: HTMLCanvasElement, arena: ArenaConfig): void
 
+	/** Resolves when the renderer backend (PixiJS) is ready to draw. */
+	readonly ready: Promise<void>
+
 	/** Push a new game state frame. The renderer will draw it. */
 	pushFrame(state: GameState): void
 

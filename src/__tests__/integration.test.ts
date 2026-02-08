@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest"
-import { Lexer, TokenKind } from "../compiler"
+import { ANGLE, FLOAT, Lexer, TokenKind, analyze, parse, typeEq } from "../compiler"
 import { createRenderer } from "../renderer"
 import { createBattle, createDefaultConfig, createSpinBot, createTrackerBot } from "../simulation"
 
@@ -48,7 +48,7 @@ func tick() {
 		expect(finalState.round).toBe(1)
 		expect(finalState.arena.width).toBe(800)
 		expect(finalState.robots).toHaveLength(2)
-		expect(finalState.bullets).toEqual([])
+		expect(Array.isArray(finalState.bullets)).toBe(true)
 		expect(finalState.mines).toEqual([])
 		expect(finalState.cookies).toEqual([])
 
@@ -82,6 +82,159 @@ func tick() {
 		// In a browser environment it would draw to a canvas.
 		renderer.destroy()
 		battle.destroy()
+	})
+
+	it("source → tokens → AST → analysis (compiler pipeline)", () => {
+		const source = `robot "Guardian"
+
+type Target struct {
+	bearing angle
+	distance float
+	active bool
+}
+
+var bestTarget Target
+var scanDir angle
+
+func tick() {
+	setSpeed(0.0)
+	if bestTarget.active {
+		setGunHeading(bestTarget.bearing)
+		if getGunHeat() == 0.0 {
+			fire(3.0)
+		}
+	}
+}
+
+func init() {
+	scanDir = angle(1)
+	setSpeed(50.0)
+}
+
+on scan(distance float, bearing angle) {
+	bestTarget = Target{
+		bearing: bearing,
+		distance: distance,
+		active: true
+	}
+}
+`
+		// Stage 1: Lex
+		const tokens = new Lexer(source).tokenize()
+		expect(tokens.length).toBeGreaterThan(20)
+
+		// Stage 2: Parse
+		const { program, errors: parseErrors } = parse(tokens)
+		expect(parseErrors.hasErrors()).toBe(false)
+		expect(program.robotName).toBe("Guardian")
+		expect(program.funcs).toHaveLength(2) // tick, init
+		expect(program.events).toHaveLength(1) // on scan
+		expect(program.types).toHaveLength(1) // Target struct
+
+		// Stage 3: Analyze
+		const result = analyze(program)
+		expect(result.errors.hasErrors()).toBe(false)
+
+		// Verify struct was resolved
+		const targetType = result.structs.get("Target")
+		expect(targetType).toBeDefined()
+		if (targetType?.kind === "struct") {
+			expect(targetType.fields).toHaveLength(3)
+			expect(typeEq(targetType.fields[0]!.type, ANGLE)).toBe(true)
+			expect(typeEq(targetType.fields[1]!.type, FLOAT)).toBe(true)
+		}
+
+		// Verify globals
+		const bestTargetSym = result.symbols.get("bestTarget")
+		expect(bestTargetSym).toBeDefined()
+		expect(bestTargetSym!.scope).toBe("global")
+
+		// Verify memory layout
+		expect(result.globalMemorySize).toBeGreaterThan(64)
+	})
+
+	it("minimal robot with no tick produces analysis error", () => {
+		const source = `robot "NothingBot"\n`
+		const tokens = new Lexer(source).tokenize()
+		const { program, errors: parseErrors } = parse(tokens)
+		expect(parseErrors.hasErrors()).toBe(false)
+		expect(program.robotName).toBe("NothingBot")
+		expect(program.funcs).toHaveLength(0)
+
+		const result = analyze(program)
+		expect(result.errors.hasErrors()).toBe(true)
+		const err = result.errors.errors[0]!
+		expect(err.message).toContain("tick()")
+		expect(err.line).toBe(1)
+		expect(err.column).toBe(1)
+		expect(err.hint).toBeDefined()
+	})
+
+	it("SpinBot.rbl compiles through full pipeline", () => {
+		const source = `robot "SpinBot"
+
+var direction int = 1
+
+func tick() {
+	setSpeed(50.0)
+	setTurnRate(5.0 * float(direction))
+	setGunTurnRate(10.0)
+
+	if getGunHeat() == 0.0 {
+		fire(1.0)
+	}
+}
+
+on scan(distance float, bearing angle) {
+	setGunHeading(bearing)
+	fire(2.0)
+}
+
+on hit(damage float, bearing angle) {
+	direction = direction * -1
+	setSpeed(80.0)
+}
+
+on wallHit(bearing angle) {
+	direction = direction * -1
+}
+`
+		const tokens = new Lexer(source).tokenize()
+		const { program, errors: parseErrors } = parse(tokens)
+		expect(parseErrors.hasErrors()).toBe(false)
+		expect(program.robotName).toBe("SpinBot")
+		expect(program.funcs).toHaveLength(1)
+		expect(program.events).toHaveLength(3)
+		expect(program.globals).toHaveLength(1)
+
+		const result = analyze(program)
+		expect(result.errors.hasErrors()).toBe(false)
+
+		// Verify global variable
+		const dirSym = result.symbols.get("direction")
+		expect(dirSym).toBeDefined()
+		expect(dirSym!.scope).toBe("global")
+
+		// Verify all functions registered
+		expect(result.funcs.has("tick")).toBe(true)
+		expect(result.funcs.has("on_scan")).toBe(true)
+		expect(result.funcs.has("on_hit")).toBe(true)
+		expect(result.funcs.has("on_wallHit")).toBe(true)
+	})
+
+	it("int literal where float expected produces clear error", () => {
+		const source = `robot "BadBot"
+func tick() {
+	setSpeed(50)
+}
+`
+		const tokens = new Lexer(source).tokenize()
+		const { program } = parse(tokens)
+		const result = analyze(program)
+		expect(result.errors.hasErrors()).toBe(true)
+		const err = result.errors.errors[0]!
+		expect(err.message).toContain("expected float")
+		expect(err.message).toContain("got int")
 	})
 
 	it("full pipeline: compile check → battle → render-ready state", () => {

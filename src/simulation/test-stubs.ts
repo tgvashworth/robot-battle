@@ -50,6 +50,61 @@ export function createSpinBot(): RobotModule {
 }
 
 /**
+ * Creates a RobotModule that drives straight east at max speed.
+ * Useful for testing wall collisions.
+ */
+export function createWallSeekerBot(): RobotModule {
+	let api: RobotAPI
+
+	return {
+		init(a) {
+			api = a
+		},
+		tick() {
+			api.setHeading(90) // East
+			api.setSpeed(100) // Max speed
+		},
+		onScan() {},
+		onScanned() {},
+		onHit() {},
+		onBulletHit() {},
+		onWallHit() {},
+		onRobotHit() {},
+		onBulletMiss() {},
+		onRobotDeath() {},
+		destroy() {},
+	}
+}
+
+/**
+ * Creates a RobotModule that stands still and fires at power 3 every time the gun is cool.
+ */
+export function createStationaryShooterBot(): RobotModule {
+	let api: RobotAPI
+
+	return {
+		init(a) {
+			api = a
+		},
+		tick() {
+			api.setSpeed(0)
+			if (api.getGunHeat() === 0 && api.getEnergy() >= 3) {
+				api.fire(3)
+			}
+		},
+		onScan() {},
+		onScanned() {},
+		onHit() {},
+		onBulletHit() {},
+		onWallHit() {},
+		onRobotHit() {},
+		onBulletMiss() {},
+		onRobotDeath() {},
+		destroy() {},
+	}
+}
+
+/**
  * Creates a RobotModule that tracks scan targets.
  */
 export function createTrackerBot(): RobotModule {

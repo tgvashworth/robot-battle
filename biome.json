@@ -32,6 +32,6 @@
 		}
 	},
 	"files": {
-		"ignore": ["dist", "node_modules", "*.md", "research", "design"]
+		"ignore": ["dist", "node_modules", "*.md", "research", "design", ".claude"]
 	}
 }

@@ -18,7 +18,8 @@
 	"dependencies": {
 		"pixi.js": "^8.6.6",
 		"react": "^19.0.0",
-		"react-dom": "^19.0.0"
+		"react-dom": "^19.0.0",
+		"zustand": "^5.0.11"
 	},
 	"devDependencies": {
 		"@biomejs/biome": "^1.9.4",

@@ -70,6 +70,7 @@ export enum TokenKind {
 	Comma = "Comma",
 	Dot = "Dot",
 	Colon = "Colon",
+	Semicolon = "Semicolon",
 
 	// Special
 	Newline = "Newline",
