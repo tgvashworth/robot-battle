@@ -7,6 +7,7 @@ import {
 	indentOnInput,
 	syntaxHighlighting,
 } from "@codemirror/language"
+import { type Diagnostic, lintGutter, setDiagnostics } from "@codemirror/lint"
 import { EditorState } from "@codemirror/state"
 import {
 	EditorView,
@@ -60,12 +61,15 @@ const darkTheme = EditorView.theme(
 	{ dark: true },
 )
 
+export type { Diagnostic }
+
 interface CodeEditorProps {
 	value: string
 	onChange: (value: string) => void
+	diagnostics?: Diagnostic[]
 }
 
-export function CodeEditor({ value, onChange }: CodeEditorProps) {
+export function CodeEditor({ value, onChange, diagnostics }: CodeEditorProps) {
 	const containerRef = useRef<HTMLDivElement>(null)
 	const viewRef = useRef<EditorView | null>(null)
 	const onChangeRef = useRef(onChange)
@@ -95,6 +99,7 @@ export function CodeEditor({ value, onChange }: CodeEditorProps) {
 				syntaxHighlighting(defaultHighlightStyle, { fallback: true }),
 				go(),
 				keymap.of([...defaultKeymap, ...historyKeymap, indentWithTab]),
+				lintGutter(),
 				darkTheme,
 				EditorView.updateListener.of((update) => {
 					if (update.docChanged) {
@@ -125,6 +130,12 @@ export function CodeEditor({ value, onChange }: CodeEditorProps) {
 			})
 		}
 	}, [value])
+
+	useEffect(() => {
+		const view = viewRef.current
+		if (!view) return
+		view.dispatch(setDiagnostics(view.state, diagnostics ?? []))
+	}, [diagnostics])
 
 	return (
 		<div

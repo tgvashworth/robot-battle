@@ -1,4 +1,5 @@
 import { create } from "zustand"
+import type { GameState } from "../../../spec/simulation"
 
 export type BattleStatus = "idle" | "running" | "finished"
 
@@ -9,6 +10,7 @@ export interface BattleState {
 	totalTicks: number
 	battleLog: string[]
 	tickCount: number
+	currentState: GameState | null
 	startBattle: () => void
 	stop: () => void
 	setStatus: (status: BattleStatus) => void
@@ -17,6 +19,7 @@ export interface BattleState {
 	setTotalTicks: (total: number) => void
 	setBattleLog: (log: string[]) => void
 	setTickCount: (count: number) => void
+	setCurrentState: (state: GameState | null) => void
 }
 
 export const useBattleStore = create<BattleState>((set) => ({
@@ -26,9 +29,10 @@ export const useBattleStore = create<BattleState>((set) => ({
 	totalTicks: 0,
 	battleLog: [],
 	tickCount: 2000,
+	currentState: null,
 
 	startBattle: () => {
-		set({ status: "running", currentTick: 0, battleLog: [] })
+		set({ status: "running", currentTick: 0, battleLog: [], currentState: null })
 	},
 
 	stop: () => {
@@ -57,5 +61,9 @@ export const useBattleStore = create<BattleState>((set) => ({
 
 	setTickCount: (count: number) => {
 		set({ tickCount: count })
+	},
+
+	setCurrentState: (currentState: GameState | null) => {
+		set({ currentState })
 	},
 }))

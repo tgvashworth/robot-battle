@@ -9,6 +9,7 @@ import type {
 	GameEvent,
 	GameState,
 	RobotAPI,
+	RobotCollisionEvent,
 	RobotDiedEvent,
 	RobotModule,
 	RobotState,
@@ -56,12 +57,14 @@ interface InternalRobot {
 
 	// Pending event callbacks
 	pendingWallHitBearing: number | undefined
+	pendingRobotHitBearing: number | undefined
 	pendingBulletMiss: boolean
 	pendingHitDamage: number | undefined
 	pendingHitBearing: number | undefined
 	pendingBulletHitTargetId: number | undefined
 	pendingOnScan: Array<{ distance: number; bearing: number }>
 	pendingOnScanned: Array<{ bearing: number }>
+	pendingRobotDeaths: number[]
 
 	// Radar sweep tracking
 	prevRadarHeading: number
@@ -235,6 +238,13 @@ export function createBattle(config: GameConfig, robots: RobotModule[]): Battle 
 							killerId: bullet.ownerId,
 						}
 						tickEvents.push(diedEvent)
+
+						// Queue onRobotDeath for all surviving robots
+						for (const survivor of internalRobots) {
+							if (survivor.alive && survivor.id !== target.id) {
+								survivor.pendingRobotDeaths.push(target.id)
+							}
+						}
 					}
 
 					// Mark bullet for removal
@@ -277,7 +287,8 @@ export function createBattle(config: GameConfig, robots: RobotModule[]): Battle 
 		}
 		bullets = survivingBullets
 
-		// Deliver wall hit callbacks before tick()
+		// ── Event delivery order ──────────────────────────────────
+		// 1. Wall hits
 		for (const robot of internalRobots) {
 			if (!robot.alive) continue
 			if (robot.pendingWallHitBearing !== undefined) {
@@ -286,16 +297,16 @@ export function createBattle(config: GameConfig, robots: RobotModule[]): Battle 
 			}
 		}
 
-		// Deliver bullet miss callbacks before tick()
+		// 2. Robot-robot collisions
 		for (const robot of internalRobots) {
 			if (!robot.alive) continue
-			if (robot.pendingBulletMiss) {
-				robot.module.onBulletMiss()
-				robot.pendingBulletMiss = false
+			if (robot.pendingRobotHitBearing !== undefined) {
+				robot.module.onRobotHit(robot.pendingRobotHitBearing)
+				robot.pendingRobotHitBearing = undefined
 			}
 		}
 
-		// Deliver bullet hit callbacks before tick()
+		// 3. Bullet hits (onHit for target, onBulletHit for shooter)
 		for (const robot of internalRobots) {
 			if (!robot.alive) continue
 			if (robot.pendingHitDamage !== undefined && robot.pendingHitBearing !== undefined) {
@@ -304,8 +315,6 @@ export function createBattle(config: GameConfig, robots: RobotModule[]): Battle 
 				robot.pendingHitBearing = undefined
 			}
 		}
-
-		// Deliver onBulletHit callbacks to shooters before tick()
 		for (const robot of internalRobots) {
 			if (!robot.alive) continue
 			if (robot.pendingBulletHitTargetId !== undefined) {
@@ -314,7 +323,25 @@ export function createBattle(config: GameConfig, robots: RobotModule[]): Battle 
 			}
 		}
 
-		// Deliver scan callbacks before tick()
+		// 4. Bullet misses
+		for (const robot of internalRobots) {
+			if (!robot.alive) continue
+			if (robot.pendingBulletMiss) {
+				robot.module.onBulletMiss()
+				robot.pendingBulletMiss = false
+			}
+		}
+
+		// 5. Robot deaths (notify all survivors)
+		for (const robot of internalRobots) {
+			if (!robot.alive) continue
+			for (const deadId of robot.pendingRobotDeaths) {
+				robot.module.onRobotDeath(deadId)
+			}
+			robot.pendingRobotDeaths = []
+		}
+
+		// 6. Scan results (onScan, onScanned)
 		for (const robot of internalRobots) {
 			if (!robot.alive) continue
 			for (const scan of robot.pendingOnScan) {
@@ -322,8 +349,6 @@ export function createBattle(config: GameConfig, robots: RobotModule[]): Battle 
 			}
 			robot.pendingOnScan = []
 		}
-
-		// Deliver scanned callbacks before tick()
 		for (const robot of internalRobots) {
 			if (!robot.alive) continue
 			for (const scanned of robot.pendingOnScanned) {
@@ -344,6 +369,115 @@ export function createBattle(config: GameConfig, robots: RobotModule[]): Battle 
 		for (const robot of internalRobots) {
 			if (!robot.alive) continue
 			applyMovement(robot, config, tickEvents)
+		}
+
+		// Robot-robot collision detection (only when at least one is moving)
+		for (let i = 0; i < internalRobots.length; i++) {
+			const a = internalRobots[i]!
+			if (!a.alive) continue
+			for (let j = i + 1; j < internalRobots.length; j++) {
+				const b = internalRobots[j]!
+				if (!b.alive) continue
+
+				// Skip collision if neither robot is moving
+				if (a.speed === 0 && b.speed === 0) continue
+
+				const dx = b.x - a.x
+				const dy = b.y - a.y
+				const dist = Math.sqrt(dx * dx + dy * dy)
+				const minDist = config.physics.robotRadius * 2
+
+				if (dist < minDist) {
+					// Calculate relative speed for damage
+					const relSpeed = Math.abs(a.speed) + Math.abs(b.speed)
+					const damage =
+						config.physics.ramDamageBase + config.physics.ramDamageSpeedFactor * relSpeed
+
+					// Apply damage to both
+					a.health = Math.max(0, a.health - damage)
+					a.damageReceived += damage
+					b.health = Math.max(0, b.health - damage)
+					b.damageReceived += damage
+
+					// Calculate bearings (relative to each robot's heading)
+					const bearingAtoB = normalizeAngle((Math.atan2(dx, -dy) * 180) / Math.PI)
+					let relBearingA = bearingAtoB - a.heading
+					if (relBearingA > 180) relBearingA -= 360
+					if (relBearingA < -180) relBearingA += 360
+
+					const bearingBtoA = normalizeAngle((Math.atan2(-dx, dy) * 180) / Math.PI)
+					let relBearingB = bearingBtoA - b.heading
+					if (relBearingB > 180) relBearingB -= 360
+					if (relBearingB < -180) relBearingB += 360
+
+					// Queue onRobotHit callbacks
+					a.pendingRobotHitBearing = relBearingA
+					b.pendingRobotHitBearing = relBearingB
+
+					// Push robots apart
+					if (dist > 0) {
+						const overlap = minDist - dist
+						const pushX = (dx / dist) * (overlap / 2)
+						const pushY = (dy / dist) * (overlap / 2)
+						a.x -= pushX
+						a.y -= pushY
+						b.x += pushX
+						b.y += pushY
+					}
+
+					// Emit collision event
+					const collisionEvent: RobotCollisionEvent = {
+						type: "robot_collision",
+						robotId1: a.id,
+						robotId2: b.id,
+						x: (a.x + b.x) / 2,
+						y: (a.y + b.y) / 2,
+						damage1: damage,
+						damage2: damage,
+					}
+					tickEvents.push(collisionEvent)
+
+					// Check deaths from collision
+					if (a.health <= 0 && a.alive) {
+						a.alive = false
+						const diedEvent: RobotDiedEvent = {
+							type: "robot_died",
+							robotId: a.id,
+							x: a.x,
+							y: a.y,
+						}
+						tickEvents.push(diedEvent)
+					}
+					if (b.health <= 0 && b.alive) {
+						b.alive = false
+						const diedEvent: RobotDiedEvent = {
+							type: "robot_died",
+							robotId: b.id,
+							x: b.x,
+							y: b.y,
+						}
+						tickEvents.push(diedEvent)
+					}
+				}
+			}
+		}
+
+		// Queue onRobotDeath for any robots that died this tick (from wall or collision)
+		// Note: bullet deaths are already queued in bullet collision section above
+		for (const event of tickEvents) {
+			if (event.type === "robot_died") {
+				// Only queue if not already queued (bullet deaths are pre-queued)
+				const alreadyQueued = internalRobots.some(
+					(r) => r.alive && r.pendingRobotDeaths.includes((event as RobotDiedEvent).robotId),
+				)
+				if (!alreadyQueued) {
+					for (const survivor of internalRobots) {
+						if (survivor.alive && survivor.id !== (event as RobotDiedEvent).robotId) {
+							survivor.pendingRobotDeaths.push((event as RobotDiedEvent).robotId)
+						}
+					}
+				}
+			}
 		}
 
 		// Step 5: Radar scanning
@@ -613,12 +747,14 @@ function createInternalRobot(
 		intendedRadarTurnRate: 0,
 		intendedFire: 0,
 		pendingWallHitBearing: undefined,
+		pendingRobotHitBearing: undefined,
 		pendingBulletMiss: false,
 		pendingHitDamage: undefined,
 		pendingHitBearing: undefined,
 		pendingBulletHitTargetId: undefined,
 		pendingOnScan: [],
 		pendingOnScanned: [],
+		pendingRobotDeaths: [],
 		prevRadarHeading: 0, // Will be set at start of first tick
 	}
 }
@@ -646,12 +782,14 @@ function resetRobot(robot: InternalRobot, config: GameConfig, rng: PRNG) {
 	robot.intendedRadarTurnRate = 0
 	robot.intendedFire = 0
 	robot.pendingWallHitBearing = undefined
+	robot.pendingRobotHitBearing = undefined
 	robot.pendingBulletMiss = false
 	robot.pendingHitDamage = undefined
 	robot.pendingHitBearing = undefined
 	robot.pendingBulletHitTargetId = undefined
 	robot.pendingOnScan = []
 	robot.pendingOnScanned = []
+	robot.pendingRobotDeaths = []
 	robot.prevRadarHeading = robot.radarHeading
 }
 
@@ -763,6 +901,14 @@ function applyMovement(robot: InternalRobot, config: GameConfig, events: GameEve
 		// Check if robot died from wall damage
 		if (robot.health <= 0) {
 			robot.alive = false
+
+			const diedEvent: RobotDiedEvent = {
+				type: "robot_died",
+				robotId: robot.id,
+				x: clampedX,
+				y: clampedY,
+			}
+			events.push(diedEvent)
 		}
 	}
 

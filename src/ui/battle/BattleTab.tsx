@@ -8,6 +8,7 @@ import type { ReplayTickSource } from "../../renderer/replay-source"
 import { createBattle, createDefaultConfig, createSpinBot } from "../../simulation"
 import { useBattleStore } from "../store/battleStore"
 import { useRobotFileStore } from "../store/robotFileStore"
+import { RobotStatusPanel } from "./RobotStatusPanel"
 
 const SPEED_OPTIONS = [0.5, 1, 2, 4] as const
 
@@ -24,6 +25,7 @@ export function BattleTab() {
 	const setStatus = useBattleStore((s) => s.setStatus)
 	const tickCount = useBattleStore((s) => s.tickCount)
 	const setTickCount = useBattleStore((s) => s.setTickCount)
+	const setCurrentState = useBattleStore((s) => s.setCurrentState)
 
 	const canvasRef = useRef<HTMLCanvasElement>(null)
 	const rendererRef = useRef<BattleRenderer | null>(null)
@@ -48,6 +50,10 @@ export function BattleTab() {
 			if (source) {
 				const tick = source.currentTick()
 				setCurrentTick(tick)
+				const frame = source.frameAt(tick > 0 ? tick - 1 : 0)
+				if (frame) {
+					setCurrentState(frame)
+				}
 				if (!source.hasNext()) {
 					setIsPaused(true)
 					setStatus("finished")
@@ -62,7 +68,7 @@ export function BattleTab() {
 				tickIntervalRef.current = null
 			}
 		}
-	}, [status, isPaused, setCurrentTick, setStatus])
+	}, [status, isPaused, setCurrentTick, setStatus, setCurrentState])
 
 	// Cleanup renderer and game loop on unmount
 	useEffect(() => {
@@ -221,6 +227,7 @@ export function BattleTab() {
 		// Update store with totals
 		setTotalTicks(frames.length)
 		setCurrentTick(0)
+		setCurrentState(frames[0] ?? null)
 		setStatus("running")
 
 		// Start playback
@@ -232,6 +239,7 @@ export function BattleTab() {
 		setBattleLog,
 		setTotalTicks,
 		setCurrentTick,
+		setCurrentState,
 		setStatus,
 		speed,
 		files,
@@ -284,6 +292,12 @@ export function BattleTab() {
 			source.seekTo(tick)
 			setCurrentTick(tick)
 
+			// Update robot status panel
+			const stateFrame = source.frameAt(tick > 0 ? tick - 1 : 0)
+			if (stateFrame) {
+				setCurrentState(stateFrame)
+			}
+
 			// Push the frame at this position to the renderer so it displays
 			const frame = source.frameAt(tick)
 			const prevFrame = tick > 0 ? source.frameAt(tick - 1) : undefined
@@ -306,7 +320,7 @@ export function BattleTab() {
 				setStatus("running")
 			}
 		},
-		[isPaused, setCurrentTick, setStatus],
+		[isPaused, setCurrentTick, setCurrentState, setStatus],
 	)
 
 	const handleStep = useCallback(() => {
@@ -320,12 +334,17 @@ export function BattleTab() {
 		}
 
 		loop.step()
-		setCurrentTick(source.currentTick())
+		const tick = source.currentTick()
+		setCurrentTick(tick)
+		const frame = source.frameAt(tick > 0 ? tick - 1 : 0)
+		if (frame) {
+			setCurrentState(frame)
+		}
 
 		if (!source.hasNext()) {
 			setStatus("finished")
 		}
-	}, [isPaused, setCurrentTick, setStatus])
+	}, [isPaused, setCurrentTick, setCurrentState, setStatus])
 
 	const hasFrames = totalTicks > 0
 
@@ -440,6 +459,7 @@ export function BattleTab() {
 						maxWidth: "100%",
 					}}
 				/>
+				<RobotStatusPanel />
 			</div>
 			{hasFrames && (
 				<div

@@ -64,7 +64,7 @@ function createSmallArenaBattle(opts?: {
 			spawns: {
 				...createDefaultConfig([]).spawns,
 				minSpawnDistanceFromRobot: 20,
-				minRobotSpacing: 1,
+				minRobotSpacing: 40, // > 2 * robotRadius to prevent overlap collisions
 			},
 		},
 	)
