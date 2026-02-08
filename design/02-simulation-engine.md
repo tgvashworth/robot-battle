@@ -253,6 +253,7 @@ type GameEvent =
   | MineDetonatedEvent
   | CookiePickupEvent
   | ScanDetectionEvent
+  | ScannedEvent
   | MineSpawnedEvent
   | CookieSpawnedEvent
   | RobotSpawnedEvent
@@ -359,6 +360,14 @@ interface ScanDetectionEvent {
   readonly bearing: number                 // absolute bearing from scanner to target
   readonly scanStartAngle: number          // arc start (for rendering the sweep)
   readonly scanEndAngle: number            // arc end
+}
+
+// Symmetric event: the TARGET is told it was scanned
+interface ScannedEvent {
+  readonly type: 'scanned'
+  readonly tick: number
+  readonly targetId: number              // the robot that was scanned (receives this event)
+  readonly bearing: number               // bearing FROM the target TO the scanner
 }
 
 interface MineSpawnedEvent {
@@ -474,6 +483,7 @@ interface RobotModule {
   init(api: RobotAPI): void
   tick(): void
   onScan(distance: number, bearing: number): void
+  onScanned(bearing: number): void
   onHit(damage: number, bearing: number): void
   onBulletHit(targetId: number): void
   onWallHit(bearing: number): void
@@ -1010,6 +1020,14 @@ for each alive robot (the "scanner"):
                 scanEndAngle: sweepEnd
             }
             // Queue on scan event for delivery to scanner in step 16
+
+            // Also emit the symmetric ScannedEvent for the TARGET
+            bearingToScanner = normalizeAngle360(bearingToTarget + 180)
+            Emit ScannedEvent {
+                targetId: target.id,
+                bearing: bearingToScanner    // bearing FROM target TO scanner
+            }
+            // Queue on scanned event for delivery to target in step 16
 ```
 
 **isAngleInSweep**: Determines if a bearing falls within the swept arc. The arc direction matters (clockwise vs counterclockwise sweep).
@@ -1045,6 +1063,7 @@ For each alive robot, in robot-ID order:
 for each event queued for this robot (in the order they were generated):
     match event:
         ScanDetection  -> robot.module.onScan(event.distance, event.bearing)
+        Scanned        -> robot.module.onScanned(event.bearing)
         BulletHit (as target) -> robot.module.onHit(event.damage, event.bearing)
         BulletHit (as shooter) -> robot.module.onBulletHit(event.targetId)
         BulletWall (as shooter) -> robot.module.onBulletMiss()

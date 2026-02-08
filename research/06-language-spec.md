@@ -329,6 +329,12 @@ on robotHit(bearing angle) {
     // Your robot collided with another robot
 }
 
+on scanned(bearing angle) {
+    // Another robot's radar detected YOU. Bearing is the direction
+    // the scan came from (i.e., where the scanner is relative to you).
+    // Use this to react: dodge, turn to face the threat, or fire back.
+}
+
 on bulletMiss() {
     // Your bullet hit a wall (missed)
 }
