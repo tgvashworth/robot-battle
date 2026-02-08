@@ -1,0 +1,31 @@
+repos:
+  - repo: https://github.com/pre-commit/pre-commit-hooks
+    rev: v5.0.0
+    hooks:
+      - id: check-added-large-files
+        args: [--maxkb=5120]
+      - id: check-case-conflict
+      - id: check-json
+      - id: check-merge-conflict
+      - id: check-symlinks
+      - id: check-yaml
+      - id: detect-private-key
+      - id: end-of-file-fixer
+      - id: mixed-line-ending
+      - id: trailing-whitespace
+
+  - repo: local
+    hooks:
+      - id: biome-check
+        name: biome check
+        entry: bunx biome check --no-errors-on-unmatched
+        language: system
+        types_or: [javascript, jsx, ts, tsx, json]
+        pass_filenames: true
+
+      - id: typecheck
+        name: typecheck
+        entry: bunx tsc -b --noEmit
+        language: system
+        pass_filenames: false
+        always_run: true

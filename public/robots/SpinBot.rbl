@@ -1,0 +1,31 @@
+robot "SpinBot"
+
+// SpinBot: a simple robot that spins and fires.
+// Drives in circles while continuously firing.
+
+var direction int = 1
+
+func tick() {
+	setSpeed(50)
+	setTurnRate(5 * direction)
+	setGunTurnRate(10)
+
+	if getGunHeat() == 0 {
+		fire(1)
+	}
+}
+
+on scan(distance float, bearing angle) {
+	setGunHeading(bearing)
+	fire(2)
+}
+
+on hit(damage float, bearing angle) {
+	// Reverse direction when hit
+	direction = direction * -1
+	setSpeed(80)
+}
+
+on wallHit(bearing angle) {
+	direction = direction * -1
+}
