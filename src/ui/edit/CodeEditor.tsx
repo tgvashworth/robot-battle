@@ -1,5 +1,4 @@
 import { defaultKeymap, history, historyKeymap, indentWithTab } from "@codemirror/commands"
-import { go } from "@codemirror/lang-go"
 import {
 	bracketMatching,
 	defaultHighlightStyle,
@@ -17,6 +16,7 @@ import {
 	lineNumbers,
 } from "@codemirror/view"
 import { useCallback, useEffect, useRef } from "react"
+import { rbl } from "./rbl-language"
 
 const darkTheme = EditorView.theme(
 	{
@@ -97,7 +97,7 @@ export function CodeEditor({ value, onChange, diagnostics }: CodeEditorProps) {
 				indentOnInput(),
 				bracketMatching(),
 				syntaxHighlighting(defaultHighlightStyle, { fallback: true }),
-				go(),
+				rbl(),
 				keymap.of([...defaultKeymap, ...historyKeymap, indentWithTab]),
 				lintGutter(),
 				darkTheme,
