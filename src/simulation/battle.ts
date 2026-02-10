@@ -2,7 +2,9 @@ import type {
 	Battle,
 	BattleResult,
 	BulletFiredEvent,
+	BulletHitCookieEvent,
 	BulletHitEvent,
+	BulletHitMineEvent,
 	BulletState,
 	BulletWallEvent,
 	CookiePickupEvent,
@@ -131,7 +133,14 @@ export function createBattle(config: GameConfig, robots: RobotModule[]): Battle 
 
 	// Give each robot its API and call init()
 	for (const robot of internalRobots) {
-		const api = createRobotAPI(robot, config, () => tick, rng)
+		const api = createRobotAPI(
+			robot,
+			config,
+			() => tick,
+			rng,
+			() => mines,
+			() => cookies,
+		)
 		robot.module.init(api)
 	}
 
@@ -284,11 +293,103 @@ export function createBattle(config: GameConfig, robots: RobotModule[]): Battle 
 			}
 		}
 
-		// Step 3: Remove bullets that exit arena bounds (and bullets that hit robots)
+		// Step 2b: Bullet-mine collision detection
+		const bulletsHitMine = new Set<number>()
+		const mineCollisionRadius = config.physics.bulletRadius + config.physics.mineRadius
+		{
+			const survivingMines: InternalMine[] = []
+			for (const mine of mines) {
+				let hit = false
+				for (const bullet of bullets) {
+					if (bulletsHitRobot.has(bullet.id) || bulletsHitMine.has(bullet.id)) continue
+					const prev = bulletPrevPositions.get(bullet.id)!
+					const result = lineSegmentIntersectsCircle(
+						prev.prevX,
+						prev.prevY,
+						bullet.x,
+						bullet.y,
+						mine.x,
+						mine.y,
+						mineCollisionRadius,
+					)
+					if (result.hit) {
+						bulletsHitMine.add(bullet.id)
+						hit = true
+						const event: BulletHitMineEvent = {
+							type: "bullet_hit_mine",
+							bulletId: bullet.id,
+							shooterId: bullet.ownerId,
+							mineId: mine.id,
+							x: mine.x,
+							y: mine.y,
+						}
+						tickEvents.push(event)
+						break
+					}
+				}
+				if (!hit) {
+					survivingMines.push(mine)
+				}
+			}
+			mines = survivingMines
+		}
+
+		// Step 2c: Bullet-cookie collision detection
+		const bulletsHitCookie = new Set<number>()
+		const cookieCollisionRadius = config.physics.bulletRadius + config.physics.cookieRadius
+		{
+			const survivingCookies: InternalCookie[] = []
+			for (const cookie of cookies) {
+				let hit = false
+				for (const bullet of bullets) {
+					if (
+						bulletsHitRobot.has(bullet.id) ||
+						bulletsHitMine.has(bullet.id) ||
+						bulletsHitCookie.has(bullet.id)
+					)
+						continue
+					const prev = bulletPrevPositions.get(bullet.id)!
+					const result = lineSegmentIntersectsCircle(
+						prev.prevX,
+						prev.prevY,
+						bullet.x,
+						bullet.y,
+						cookie.x,
+						cookie.y,
+						cookieCollisionRadius,
+					)
+					if (result.hit) {
+						bulletsHitCookie.add(bullet.id)
+						hit = true
+						const event: BulletHitCookieEvent = {
+							type: "bullet_hit_cookie",
+							bulletId: bullet.id,
+							shooterId: bullet.ownerId,
+							cookieId: cookie.id,
+							x: cookie.x,
+							y: cookie.y,
+						}
+						tickEvents.push(event)
+						break
+					}
+				}
+				if (!hit) {
+					survivingCookies.push(cookie)
+				}
+			}
+			cookies = survivingCookies
+		}
+
+		// Step 3: Remove bullets that exit arena bounds (and bullets that hit robots/mines/cookies)
 		const survivingBullets: InternalBullet[] = []
 		for (const bullet of bullets) {
-			// Skip bullets that already hit a robot
-			if (bulletsHitRobot.has(bullet.id)) continue
+			// Skip bullets that already hit a robot, mine, or cookie
+			if (
+				bulletsHitRobot.has(bullet.id) ||
+				bulletsHitMine.has(bullet.id) ||
+				bulletsHitCookie.has(bullet.id)
+			)
+				continue
 
 			if (
 				bullet.x < 0 ||
@@ -1196,6 +1297,8 @@ function createRobotAPI(
 	config: GameConfig,
 	getTick: () => number,
 	rng: PRNG,
+	getMines: () => InternalMine[],
+	getCookies: () => InternalCookie[],
 ): RobotAPI {
 	return {
 		setSpeed: (speed) => {
@@ -1238,6 +1341,66 @@ function createRobotAPI(
 		arenaWidth: () => config.arena.width,
 		arenaHeight: () => config.arena.height,
 		robotCount: () => config.robots.length,
+		nearestMineDist: () => {
+			const m = getMines()
+			if (m.length === 0) return -1
+			let best = Number.POSITIVE_INFINITY
+			for (const mine of m) {
+				const d = Math.sqrt((robot.x - mine.x) ** 2 + (robot.y - mine.y) ** 2)
+				if (d < best) best = d
+			}
+			return best
+		},
+		nearestMineBearing: () => {
+			const m = getMines()
+			if (m.length === 0) return 0
+			let best = Number.POSITIVE_INFINITY
+			let bx = 0
+			let by = 0
+			for (const mine of m) {
+				const d = Math.sqrt((robot.x - mine.x) ** 2 + (robot.y - mine.y) ** 2)
+				if (d < best) {
+					best = d
+					bx = mine.x
+					by = mine.y
+				}
+			}
+			const absolute = normalizeAngle((Math.atan2(by - robot.y, bx - robot.x) * 180) / Math.PI + 90)
+			let relative = absolute - robot.heading
+			if (relative > 180) relative -= 360
+			if (relative < -180) relative += 360
+			return relative
+		},
+		nearestCookieDist: () => {
+			const c = getCookies()
+			if (c.length === 0) return -1
+			let best = Number.POSITIVE_INFINITY
+			for (const cookie of c) {
+				const d = Math.sqrt((robot.x - cookie.x) ** 2 + (robot.y - cookie.y) ** 2)
+				if (d < best) best = d
+			}
+			return best
+		},
+		nearestCookieBearing: () => {
+			const c = getCookies()
+			if (c.length === 0) return 0
+			let best = Number.POSITIVE_INFINITY
+			let bx = 0
+			let by = 0
+			for (const cookie of c) {
+				const d = Math.sqrt((robot.x - cookie.x) ** 2 + (robot.y - cookie.y) ** 2)
+				if (d < best) {
+					best = d
+					bx = cookie.x
+					by = cookie.y
+				}
+			}
+			const absolute = normalizeAngle((Math.atan2(by - robot.y, bx - robot.x) * 180) / Math.PI + 90)
+			let relative = absolute - robot.heading
+			if (relative > 180) relative -= 360
+			if (relative < -180) relative += 360
+			return relative
+		},
 		distanceTo: (x, y) => Math.sqrt((robot.x - x) ** 2 + (robot.y - y) ** 2),
 		bearingTo: (x, y) => {
 			const absolute = normalizeAngle((Math.atan2(y - robot.y, x - robot.x) * 180) / Math.PI + 90)

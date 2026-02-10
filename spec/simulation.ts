@@ -207,6 +207,8 @@ export type GameEvent =
 	| BulletFiredEvent
 	| BulletHitEvent
 	| BulletWallEvent
+	| BulletHitMineEvent
+	| BulletHitCookieEvent
 	| RobotHitEvent
 	| RobotDiedEvent
 	| WallHitEvent
@@ -324,6 +326,24 @@ export interface MineSpawnedEvent {
 
 export interface CookieSpawnedEvent {
 	readonly type: "cookie_spawned"
+	readonly cookieId: number
+	readonly x: number
+	readonly y: number
+}
+
+export interface BulletHitMineEvent {
+	readonly type: "bullet_hit_mine"
+	readonly bulletId: number
+	readonly shooterId: number
+	readonly mineId: number
+	readonly x: number
+	readonly y: number
+}
+
+export interface BulletHitCookieEvent {
+	readonly type: "bullet_hit_cookie"
+	readonly bulletId: number
+	readonly shooterId: number
 	readonly cookieId: number
 	readonly x: number
 	readonly y: number
@@ -451,6 +471,12 @@ export interface RobotAPI {
 	arenaWidth(): number
 	arenaHeight(): number
 	robotCount(): number
+
+	// Mine/cookie awareness (returns -1.0 for dist if none exist)
+	nearestMineDist(): number
+	nearestMineBearing(): number
+	nearestCookieDist(): number
+	nearestCookieBearing(): number
 
 	// Utility
 	distanceTo(x: number, y: number): number

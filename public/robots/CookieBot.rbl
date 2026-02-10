@@ -1,0 +1,171 @@
+robot "CookieBot"
+
+// CookieBot: A survival-focused bot that actively seeks cookies to
+// restore health. When health is low, prioritizes cookies over combat.
+// Still fights when healthy, using radar sweep and distance-based fire.
+
+var phase int = 0
+
+// Enemy tracking
+var enemyBearing angle = angle(0)
+var enemyDist float = 0.0
+var ticksSinceScan int = 0
+
+// Cookie seeking
+var healthThreshold float = 70.0
+var cookieSeekSpeed float = 80.0
+
+// Radar
+var radarOscDir float = 1.0
+
+func init() {
+	setColor(50, 200, 80)
+	setGunColor(30, 160, 50)
+	setRadarColor(100, 255, 130)
+	setScanWidth(12.0)
+}
+
+func tick() {
+	ticksSinceScan = ticksSinceScan + 1
+
+	cookieDist := nearestCookieDist()
+	cookieBear := nearestCookieBearing()
+	mineDist := nearestMineDist()
+	mineBear := nearestMineBearing()
+
+	// Decide phase based on health and cookie availability
+	if getHealth() < healthThreshold && cookieDist > 0.0 {
+		phase = 2
+	} else {
+		if ticksSinceScan > 30 {
+			phase = 0
+		}
+	}
+
+	if phase == 0 {
+		// Search mode: sweep radar, roam toward cookies or center
+		setScanWidth(18.0)
+		setRadarTurnRate(22.0)
+
+		if cookieDist > 0.0 {
+			// Head toward nearest cookie while searching
+			setHeading(getHeading() + cookieBear)
+			setSpeed(60.0)
+		} else {
+			cx := arenaWidth() * 0.5
+			cy := arenaHeight() * 0.5
+			setHeading(getHeading() + bearingTo(cx, cy))
+			setSpeed(45.0)
+		}
+
+		setGunHeading(getRadarHeading())
+	}
+
+	if phase == 1 {
+		// Combat mode: fight the enemy, but head toward cookies if nearby
+		setScanWidth(12.0)
+
+		enemyAbsAngle := getHeading() + enemyBearing
+
+		// Radar lock
+		radarTarget := enemyAbsAngle + angle(6.0) * radarOscDir
+		setRadarHeading(radarTarget)
+		radarOscDir = radarOscDir * -1.0
+
+		// Movement: strafe perpendicular, but bias toward cookies
+		perpAngle := enemyAbsAngle + angle(90)
+		if cookieDist > 0.0 && cookieDist < 200.0 {
+			// Blend toward cookie
+			perpAngle = getHeading() + cookieBear
+		}
+		setHeading(perpAngle)
+		setSpeed(65.0)
+
+		// Gun: aim at enemy
+		setGunHeading(enemyAbsAngle)
+
+		// Fire conservatively to save energy
+		if getGunHeat() == 0.0 {
+			if enemyDist < 150.0 {
+				fire(3.0)
+			} else {
+				if enemyDist < 350.0 {
+					fire(2.0)
+				} else {
+					fire(1.0)
+				}
+			}
+		}
+
+		if ticksSinceScan > 25 {
+			phase = 0
+		}
+	}
+
+	if phase == 2 {
+		// Cookie-seek mode: beeline for nearest cookie
+		setScanWidth(14.0)
+		setRadarTurnRate(20.0)
+
+		setHeading(getHeading() + cookieBear)
+		setSpeed(cookieSeekSpeed)
+
+		// Still fire at enemy if gun is ready and we have scan data
+		if ticksSinceScan < 15 {
+			enemyAbsAngle := getHeading() + enemyBearing
+			setGunHeading(enemyAbsAngle)
+			if getGunHeat() == 0.0 {
+				fire(1.0)
+			}
+		} else {
+			setGunHeading(getRadarHeading())
+		}
+
+		// Return to normal if cookie collected or health restored
+		if cookieDist < 0.0 || getHealth() > healthThreshold + 10.0 {
+			phase = 0
+		}
+	}
+
+	// Mine avoidance: if a mine is very close, steer away
+	if mineDist > 0.0 && mineDist < 60.0 {
+		// Turn away from mine
+		awayAngle := getHeading() + mineBear + angle(180)
+		setHeading(awayAngle)
+		setSpeed(70.0)
+	}
+
+	// Wall avoidance
+	wallMargin := 50.0
+	if getX() < wallMargin || getX() > arenaWidth() - wallMargin || getY() < wallMargin || getY() > arenaHeight() - wallMargin {
+		cx := arenaWidth() * 0.5
+		cy := arenaHeight() * 0.5
+		setHeading(getHeading() + bearingTo(cx, cy))
+		setSpeed(60.0)
+	}
+
+	debugInt(phase)
+	debugFloat(cookieDist)
+}
+
+on scan(distTo float, bearing angle) {
+	enemyBearing = bearing
+	enemyDist = distTo
+	ticksSinceScan = 0
+
+	if phase == 0 {
+		phase = 1
+	}
+}
+
+on wallHit(bearing angle) {
+	// nothing special
+}
+
+on hit(damage float, bearing angle) {
+	enemyBearing = bearing
+	ticksSinceScan = 0
+	if phase == 0 {
+		phase = 1
+	}
+}

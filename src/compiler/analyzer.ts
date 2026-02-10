@@ -100,6 +100,11 @@ const API_REGISTRY: readonly [string, readonly RBLType[], readonly RBLType[]][] 
 	["arenaWidth", [], [FLOAT]],
 	["arenaHeight", [], [FLOAT]],
 	["robotCount", [], [INT]],
+	// Mine/cookie awareness
+	["nearestMineDist", [], [FLOAT]],
+	["nearestMineBearing", [], [ANGLE]],
+	["nearestCookieDist", [], [FLOAT]],
+	["nearestCookieBearing", [], [ANGLE]],
 	// Utility
 	["distanceTo", [FLOAT, FLOAT], [FLOAT]],
 	["bearingTo", [FLOAT, FLOAT], [ANGLE]],

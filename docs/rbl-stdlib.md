@@ -128,6 +128,17 @@ Bullet speed: `35 - 3 * power`. Bullet damage: `4 * power` (+ 2 bonus on direct 
 | `arenaHeight() float` | Arena height (default 600).    |
 | `robotCount() int`    | Number of robots in the match. |
 
+## Mine/Cookie Awareness
+
+| Function                     | Description                                                |
+|------------------------------|------------------------------------------------------------|
+| `nearestMineDist() float`    | Distance to nearest mine, or -1.0 if no mines on field.   |
+| `nearestMineBearing() angle` | Bearing to nearest mine (relative to heading). 0 if none.  |
+| `nearestCookieDist() float`  | Distance to nearest cookie, or -1.0 if no cookies on field.|
+| `nearestCookieBearing() angle` | Bearing to nearest cookie (relative to heading). 0 if none.|
+
+Mines deal 30 damage on contact. Cookies heal 20 HP on contact. Both can be destroyed by bullets.
+
 ## Utility
 
 | Function                           | Description                                       |

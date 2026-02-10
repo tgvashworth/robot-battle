@@ -100,6 +100,11 @@ export async function instantiate(
 			arenaWidth: () => requireApi().arenaWidth(),
 			arenaHeight: () => requireApi().arenaHeight(),
 			robotCount: () => requireApi().robotCount(),
+			// Mine/cookie awareness
+			nearestMineDist: () => requireApi().nearestMineDist(),
+			nearestMineBearing: () => requireApi().nearestMineBearing(),
+			nearestCookieDist: () => requireApi().nearestCookieDist(),
+			nearestCookieBearing: () => requireApi().nearestCookieBearing(),
 			// Utility
 			distanceTo: (x: number, y: number) => requireApi().distanceTo(x, y),
 			bearingTo: (x: number, y: number) => requireApi().bearingTo(x, y),
