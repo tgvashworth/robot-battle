@@ -5,9 +5,15 @@ import type {
 	BulletHitEvent,
 	BulletState,
 	BulletWallEvent,
+	CookiePickupEvent,
+	CookieSpawnedEvent,
+	CookieState,
 	GameConfig,
 	GameEvent,
 	GameState,
+	MineDetonatedEvent,
+	MineSpawnedEvent,
+	MineState,
 	RobotAPI,
 	RobotCollisionEvent,
 	RobotDiedEvent,
@@ -83,6 +89,24 @@ interface InternalBullet {
 	power: number
 }
 
+/**
+ * Internal mutable state for a mine on the field.
+ */
+interface InternalMine {
+	id: number
+	x: number
+	y: number
+}
+
+/**
+ * Internal mutable state for a cookie on the field.
+ */
+interface InternalCookie {
+	id: number
+	x: number
+	y: number
+}
+
 export function createBattle(config: GameConfig, robots: RobotModule[]): Battle {
 	const rng = new PRNG(config.masterSeed)
 	let tick = 0
@@ -92,6 +116,10 @@ export function createBattle(config: GameConfig, robots: RobotModule[]): Battle 
 	const allRoundResults: RoundResult[] = []
 	let bullets: InternalBullet[] = []
 	let nextBulletId = 0
+	let mines: InternalMine[] = []
+	let nextMineId = 0
+	let cookies: InternalCookie[] = []
+	let nextCookieId = 0
 	// Track robot pairs currently in collision (only apply damage on initial contact)
 	const collidingPairs = new Set<string>()
 
@@ -117,8 +145,8 @@ export function createBattle(config: GameConfig, robots: RobotModule[]): Battle 
 			arena: config.arena,
 			robots: internalRobots.map(snapshotRobot),
 			bullets: bullets.map(snapshotBullet),
-			mines: [],
-			cookies: [],
+			mines: mines.map(snapshotMine),
+			cookies: cookies.map(snapshotCookie),
 			events: [...tickEvents],
 		}
 	}
@@ -619,6 +647,149 @@ export function createBattle(config: GameConfig, robots: RobotModule[]): Battle 
 			tickEvents.push(firedEvent)
 		}
 
+		// ── Mine spawning ──────────────────────────────────────
+		if (tick % config.spawns.mineSpawnInterval === 0 && mines.length < config.spawns.mineMaxCount) {
+			const pos = findSpawnPosition(
+				config,
+				internalRobots,
+				rng,
+				config.spawns.minSpawnDistanceFromRobot,
+			)
+			if (pos) {
+				const mineId = nextMineId++
+				mines.push({ id: mineId, x: pos.x, y: pos.y })
+				const spawnEvent: MineSpawnedEvent = {
+					type: "mine_spawned",
+					mineId,
+					x: pos.x,
+					y: pos.y,
+				}
+				tickEvents.push(spawnEvent)
+			}
+		}
+
+		// ── Cookie spawning ──────────────────────────────────────
+		if (
+			tick % config.spawns.cookieSpawnInterval === 0 &&
+			cookies.length < config.spawns.cookieMaxCount
+		) {
+			const pos = findSpawnPosition(
+				config,
+				internalRobots,
+				rng,
+				config.spawns.minSpawnDistanceFromRobot,
+			)
+			if (pos) {
+				const cookieId = nextCookieId++
+				cookies.push({ id: cookieId, x: pos.x, y: pos.y })
+				const spawnEvent: CookieSpawnedEvent = {
+					type: "cookie_spawned",
+					cookieId,
+					x: pos.x,
+					y: pos.y,
+				}
+				tickEvents.push(spawnEvent)
+			}
+		}
+
+		// ── Robot-mine collision ──────────────────────────────────
+		{
+			const survivingMines: InternalMine[] = []
+			for (const mine of mines) {
+				let detonated = false
+				for (const robot of internalRobots) {
+					if (!robot.alive) continue
+					const dx = robot.x - mine.x
+					const dy = robot.y - mine.y
+					const dist = Math.sqrt(dx * dx + dy * dy)
+					if (dist < config.physics.robotRadius + config.physics.mineRadius) {
+						// Mine detonates
+						const damage = config.physics.mineDamage
+						robot.health = Math.max(0, robot.health - damage)
+						robot.damageReceived += damage
+
+						const detonateEvent: MineDetonatedEvent = {
+							type: "mine_detonated",
+							mineId: mine.id,
+							robotId: robot.id,
+							x: mine.x,
+							y: mine.y,
+							damage,
+						}
+						tickEvents.push(detonateEvent)
+
+						// Check if robot died from mine
+						if (robot.health <= 0 && robot.alive) {
+							robot.alive = false
+							const diedEvent: RobotDiedEvent = {
+								type: "robot_died",
+								robotId: robot.id,
+								x: robot.x,
+								y: robot.y,
+							}
+							tickEvents.push(diedEvent)
+
+							// Queue onRobotDeath for all surviving robots
+							for (const survivor of internalRobots) {
+								if (survivor.alive && survivor.id !== robot.id) {
+									survivor.pendingRobotDeaths.push(robot.id)
+								}
+							}
+						}
+
+						detonated = true
+						break // Mine only hits one robot
+					}
+				}
+				if (!detonated) {
+					survivingMines.push(mine)
+				}
+			}
+			mines = survivingMines
+		}
+
+		// ── Robot-cookie collision ──────────────────────────────────
+		{
+			const survivingCookies: InternalCookie[] = []
+			for (const cookie of cookies) {
+				let pickedUp = false
+				for (const robot of internalRobots) {
+					if (!robot.alive) continue
+					const dx = robot.x - cookie.x
+					const dy = robot.y - cookie.y
+					const dist = Math.sqrt(dx * dx + dy * dy)
+					if (dist < config.physics.robotRadius + config.physics.cookieRadius) {
+						// Robot picks up cookie
+						const healthGained = Math.min(
+							config.physics.cookieHealth,
+							config.physics.maxHealth - robot.health,
+						)
+						robot.health = Math.min(
+							config.physics.maxHealth,
+							robot.health + config.physics.cookieHealth,
+						)
+
+						const pickupEvent: CookiePickupEvent = {
+							type: "cookie_pickup",
+							cookieId: cookie.id,
+							robotId: robot.id,
+							x: cookie.x,
+							y: cookie.y,
+							healthGained,
+						}
+						tickEvents.push(pickupEvent)
+
+						pickedUp = true
+						break // Cookie only picked up by one robot
+					}
+				}
+				if (!pickedUp) {
+					survivingCookies.push(cookie)
+				}
+			}
+			cookies = survivingCookies
+		}
+
 		// Check round end conditions
 		const aliveCount = internalRobots.filter((r) => r.alive).length
 		const totalRobots = internalRobots.length
@@ -716,6 +887,10 @@ export function createBattle(config: GameConfig, robots: RobotModule[]): Battle 
 			roundOver = false
 			bullets = []
 			nextBulletId = 0
+			mines = []
+			nextMineId = 0
+			cookies = []
+			nextCookieId = 0
 			for (const robot of internalRobots) {
 				resetRobot(robot, config, rng)
 			}
@@ -839,6 +1014,57 @@ function snapshotRobot(robot: InternalRobot): RobotState {
 		bulletsHit: robot.bulletsHit,
 		kills: robot.kills,
 	}
+}
+
+function snapshotMine(mine: InternalMine): MineState {
+	return {
+		id: mine.id,
+		x: mine.x,
+		y: mine.y,
+	}
+}
+
+function snapshotCookie(cookie: InternalCookie): CookieState {
+	return {
+		id: cookie.id,
+		x: cookie.x,
+		y: cookie.y,
+	}
+}
+
+/**
+ * Find a random spawn position in the arena that is at least `minDist`
+ * away from all alive robots. Tries up to 20 times, returns undefined
+ * if no valid position is found.
+ */
+function findSpawnPosition(
+	config: GameConfig,
+	robots: InternalRobot[],
+	rng: PRNG,
+	minDist: number,
+): { x: number; y: number } | undefined {
+	const margin = 20 // keep away from edges
+	for (let attempt = 0; attempt < 20; attempt++) {
+		const x = margin + rng.nextFloat() * (config.arena.width - 2 * margin)
+		const y = margin + rng.nextFloat() * (config.arena.height - 2 * margin)
+
+		let tooClose = false
+		for (const robot of robots) {
+			if (!robot.alive) continue
+			const dx = robot.x - x
+			const dy = robot.y - y
+			const dist = Math.sqrt(dx * dx + dy * dy)
+			if (dist < minDist) {
+				tooClose = true
+				break
+			}
+		}
+
+		if (!tooClose) {
+			return { x, y }
+		}
+	}
+	return undefined
 }
 
 function snapshotBullet(bullet: InternalBullet): BulletState {

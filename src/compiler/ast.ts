@@ -205,6 +205,7 @@ export type Expr =
 	| FieldAccess
 	| IndexAccess
 	| StructLiteral
+	| ArrayLiteral
 	| GroupExpr
 
 export interface IntLiteral {
@@ -303,6 +304,12 @@ export interface StructLiteral {
 export interface StructFieldInit {
 	readonly name: string
 	readonly value: Expr
+	readonly span: Span
+}
+
+export interface ArrayLiteral {
+	readonly kind: "ArrayLiteral"
+	readonly elements: Expr[]
 	readonly span: Span
 }
 

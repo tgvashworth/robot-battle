@@ -871,6 +871,26 @@ class Analyzer {
 				break
 			}
 
+			case "ArrayLiteral": {
+				if (expr.elements.length === 0) {
+					this.error("empty array literal", expr.span)
+				} else {
+					// Infer element type from first element
+					const firstType = this.checkExpr(expr.elements[0]!)
+					for (let i = 1; i < expr.elements.length; i++) {
+						const elemType = this.checkExpr(expr.elements[i]!)
+						if (!typeEq(elemType, firstType)) {
+							this.error(
+								`array element ${i}: expected ${typeToString(firstType)}, got ${typeToString(elemType)}`,
+								expr.elements[i]!.span,
+							)
+						}
+					}
+					type = { kind: "array", size: expr.elements.length, elementType: firstType }
+				}
+				break
+			}
+
 			case "GroupExpr": {
 				type = this.checkExpr(expr.expr)
 				const innerInfo = this.exprTypes.get(expr.expr)

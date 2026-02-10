@@ -26,6 +26,7 @@ export enum TokenKind {
 	Continue = "Continue",
 	Type = "Type",
 	Struct = "Struct",
+	While = "While",
 
 	// Type keywords
 	IntType = "IntType",
@@ -101,6 +102,7 @@ const KEYWORDS: Record<string, TokenKind> = {
 	continue: TokenKind.Continue,
 	type: TokenKind.Type,
 	struct: TokenKind.Struct,
+	while: TokenKind.While,
 	true: TokenKind.True,
 	false: TokenKind.False,
 	int: TokenKind.IntType,

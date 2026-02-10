@@ -1,0 +1,179 @@
+robot "WallBot"
+
+// WallBot: picks a random wall, rushes to it, then patrols back and forth
+// like a Pong paddle. Radar sweeps inward toward the arena, gun tracks
+// radar, fires on scan with power scaled to distance.
+//
+// Phase 0: rush to wall
+// Phase 1: decelerate and turn to face along the wall
+// Phase 2: patrolling back and forth
+//
+// Coordinate system: origin top-left, Y down, heading 0=north, 90=east
+
+var wall int = 0
+var phase int = 0
+var patrolDir float = 1.0
+var margin float = 60.0
+var patrolSpeed float = 70.0
+
+// Radar sweeps inward with smooth oscillation
+var radarOffset float = 0.0
+var radarSweepDir float = 1.0
+var radarSweepMax float = 35.0
+var radarSweepSpeed float = 4.0
+
+func getPatrolHeading() angle {
+	// Wall 0 (north/top):    patrol east(90) / west(270)
+	// Wall 1 (east/right):   patrol south(180) / north(0)
+	// Wall 2 (south/bottom): patrol east(90) / west(270)
+	// Wall 3 (west/left):    patrol south(180) / north(0)
+	if wall == 0 || wall == 2 {
+		if patrolDir > 0.0 { return angle(90) }
+		return angle(270)
+	}
+	// wall 1 or 3
+	if patrolDir > 0.0 { return angle(180) }
+	return angle(0)
+}
+
+func getInwardAngle() angle {
+	// Direction from wall toward arena center
+	if wall == 0 { return angle(180) }
+	if wall == 1 { return angle(270) }
+	if wall == 2 { return angle(0) }
+	return angle(90)
+}
+
+func getRushHeading() angle {
+	// Direction straight toward the wall
+	if wall == 0 { return angle(0) }
+	if wall == 1 { return angle(90) }
+	if wall == 2 { return angle(180) }
+	return angle(270)
+}
+
+func isAtWall() bool {
+	r := 13.0
+	threshold := r + 5.0
+	if wall == 0 { return getY() < threshold }
+	if wall == 1 { return getX() > arenaWidth() - threshold }
+	if wall == 2 { return getY() > arenaHeight() - threshold }
+	return getX() < threshold
+}
+
+func checkReverse() {
+	if wall == 0 || wall == 2 {
+		if patrolDir > 0.0 && getX() > arenaWidth() - margin {
+			patrolDir = -1.0
+		}
+		if patrolDir < 0.0 && getX() < margin {
+			patrolDir = 1.0
+		}
+	}
+	if wall == 1 || wall == 3 {
+		if patrolDir > 0.0 && getY() > arenaHeight() - margin {
+			patrolDir = -1.0
+		}
+		if patrolDir < 0.0 && getY() < margin {
+			patrolDir = 1.0
+		}
+	}
+}
+
+func init() {
+	setColor(60, 180, 60)
+	setGunColor(40, 100, 40)
+	setRadarColor(100, 255, 100)
+
+	wall = random(4)
+	setSpeed(100.0)
+}
+
+func tick() {
+	if phase == 0 {
+		// Rush to wall: keep heading set every tick
+		setHeading(getRushHeading())
+		setSpeed(100.0)
+
+		// If we're close enough to the wall, transition even without wallHit
+		if isAtWall() {
+			phase = 1
+			setSpeed(0.0)
+		}
+	}
+
+	if phase == 1 {
+		// Turning to align with wall, stay stopped so we don't push into wall
+		setSpeed(0.0)
+		patrolHeading := getPatrolHeading()
+		setHeading(patrolHeading)
+
+		// Check if heading is close enough to start patrolling
+		// Use bearingTo trick: compute diff via float math
+		target := float(patrolHeading)
+		current := float(getHeading())
+		diff := target - current
+		if diff > 180.0 { diff = diff - 360.0 }
+		if diff < -180.0 { diff = diff + 360.0 }
+		if abs(diff) < 15.0 {
+			phase = 2
+		}
+	}
+
+	if phase == 2 {
+		// Patrol along the wall
+		checkReverse()
+		setHeading(getPatrolHeading())
+		setSpeed(patrolSpeed)
+	}
+
+	// Radar sweeps inward from the wall with smooth oscillation
+	if phase > 0 {
+		radarOffset = radarOffset + radarSweepSpeed * radarSweepDir
+		if radarOffset > radarSweepMax {
+			radarSweepDir = -1.0
+		}
+		if radarOffset < radarSweepMax * -1.0 {
+			radarSweepDir = 1.0
+		}
+
+		inward := getInwardAngle()
+		setRadarHeading(inward + angle(radarOffset))
+		setScanWidth(12.0)
+		setGunHeading(getRadarHeading())
+	}
+
+	debugInt(phase)
+}
+
+on wallHit(bearing angle) {
+	if phase == 0 {
+		// Reached our wall
+		phase = 1
+		setSpeed(0.0)
+	}
+	if phase == 2 {
+		// Hit a corner wall while patrolling, reverse direction
+		patrolDir = patrolDir * -1.0
+		setSpeed(0.0)
+	}
+}
+
+on scan(distTo float, bearing angle) {
+	if getGunHeat() == 0.0 {
+		if distTo < 150.0 {
+			fire(3.5)
+		} else {
+			if distTo < 350.0 {
+				fire(2.0)
+			} else {
+				fire(1.0)
+			}
+		}
+	}
+}
+
+on hit(damage float, bearing angle) {
+	// Dodge by reversing patrol direction
+	patrolDir = patrolDir * -1.0
+}

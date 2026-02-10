@@ -1,0 +1,166 @@
+robot "TrackerBot"
+
+// TrackerBot: Aggressive pursuer with predictive aiming.
+// Uses a tight radar lock to track the enemy, calculates lead angle
+// based on distance and estimated bullet travel time, then chases
+// the target down while firing accurately.
+//
+// Strategy:
+// - Phase 0: Sweep radar to find a target
+// - Phase 1: Lock radar on target, pursue, and fire with lead
+// - Moves perpendicular to target at close range to be harder to hit
+// - Reverts to sweep if target is lost for too long
+
+var phase int = 0
+
+// Enemy tracking
+var enemyBearing angle = angle(0)
+var enemyDist float = 0.0
+var enemyAbsAngle angle = angle(0)
+var ticksSinceScan int = 0
+var maxLostTicks int = 30
+
+// Radar lock: we want to keep the radar pointed at the enemy
+// and oscillate narrowly around that direction
+var radarLockAngle angle = angle(0)
+var radarSweepDir float = 1.0
+
+// Movement
+var moveDir float = 1.0
+var preferredDist float = 200.0
+
+func init() {
+	setColor(220, 30, 30)
+	setGunColor(180, 20, 20)
+	setRadarColor(255, 100, 100)
+	setScanWidth(10.0)
+}
+
+func tick() {
+	ticksSinceScan = ticksSinceScan + 1
+
+	if phase == 0 {
+		// Searching: sweep radar wide to find target
+		setScanWidth(20.0)
+		setRadarTurnRate(20.0)
+
+		// Move toward center to avoid walls
+		cx := arenaWidth() * 0.5
+		cy := arenaHeight() * 0.5
+		b := bearingTo(cx, cy)
+		setHeading(getHeading() + b)
+		setSpeed(40.0)
+
+		// Gun follows radar during search
+		setGunHeading(getRadarHeading())
+	}
+
+	if phase == 1 {
+		// Tracking: tight radar lock on the target
+		setScanWidth(12.0)
+
+		// The enemy's absolute bearing from our perspective
+		enemyAbsAngle = getHeading() + enemyBearing
+
+		// Radar: oscillate tightly around the enemy's last known position
+		radarLockAngle = enemyAbsAngle
+		setRadarHeading(radarLockAngle + angle(8.0) * radarSweepDir)
+		radarSweepDir = radarSweepDir * -1.0
+
+		// Gun aiming with lead prediction
+		// Bullet speed at power 3 = 35 - 3*3 = 26
+		// Time to reach = distance / bulletSpeed
+		// The enemy might be moving, but we aim at current position
+		// with a slight lead based on the bearing change rate
+		firePower := 3.0
+		if enemyDist < 120.0 {
+			firePower = 4.5
+		}
+		if enemyDist > 400.0 {
+			firePower = 1.5
+		}
+
+		// Aim gun at enemy absolute angle
+		setGunHeading(enemyAbsAngle)
+
+		// Fire if gun is cool
+		if getGunHeat() == 0.0 {
+			if getEnergy() > 10.0 {
+				fire(firePower)
+			} else {
+				fire(1.0)
+			}
+		}
+
+		// Movement: pursue the enemy
+		if enemyDist > preferredDist + 50.0 {
+			// Too far, charge toward them (always forward)
+			setHeading(enemyAbsAngle)
+			setSpeed(80.0)
+		} else {
+			if enemyDist < preferredDist - 50.0 {
+				// Too close, strafe perpendicular
+				strafeAngle := enemyAbsAngle + angle(90)
+				setHeading(strafeAngle)
+				setSpeed(65.0 * moveDir)
+			} else {
+				// Good range, orbit perpendicular to enemy
+				strafeAngle := enemyAbsAngle + angle(90)
+				setHeading(strafeAngle)
+				setSpeed(65.0 * moveDir)
+			}
+		}
+
+		// Lost the target for too long, revert to searching
+		if ticksSinceScan > maxLostTicks {
+			phase = 0
+		}
+	}
+
+	// Wall avoidance: if near a wall, steer toward center
+	wallMargin := 50.0
+	if getX() < wallMargin || getX() > arenaWidth() - wallMargin {
+		cx := arenaWidth() * 0.5
+		cy := arenaHeight() * 0.5
+		setHeading(getHeading() + bearingTo(cx, cy))
+		setSpeed(60.0)
+	}
+	if getY() < wallMargin || getY() > arenaHeight() - wallMargin {
+		cx := arenaWidth() * 0.5
+		cy := arenaHeight() * 0.5
+		setHeading(getHeading() + bearingTo(cx, cy))
+		setSpeed(60.0)
+	}
+
+	debugInt(phase)
+	debugFloat(enemyDist)
+}
+
+on scan(distTo float, bearing angle) {
+	// Update tracking data
+	enemyBearing = bearing
+	enemyDist = distTo
+	ticksSinceScan = 0
+
+	// Switch to tracking mode
+	if phase == 0 {
+		phase = 1
+	}
+}
+
+on wallHit(bearing angle) {
+	// Reverse movement direction to get off the wall
+	moveDir = moveDir * -1.0
+	setSpeed(50.0 * moveDir)
+}
+
+on hit(damage float, bearing angle) {
+	// When hit, randomly change strafe direction to dodge follow-ups
+	if random(2) == 0 {
+		moveDir = moveDir * -1.0
+	}
+}
+
+on bulletHit(robotId int) {
+	// Good, keep tracking
+}

@@ -2,31 +2,47 @@ robot "SawBot"
 
 // SawBot: picks a point on a circle around the arena center,
 // then oscillates along the tangent to the circle at that point.
-// Radar sweeps continuously; on scan, briefly reverses to re-acquire.
-//
-// Debug values: phase | spd | bearingToTarget | dist
+// Radar sweeps continuously; on scan, reverses briefly to re-acquire.
+// The back-and-forth "saw" motion makes it hard to hit.
 
 var targetX float = 0.0
 var targetY float = 0.0
 var axis angle = angle(0)
 var spd float = 60.0
 var phase int = 0
-var turnRate float = 6.0
-var scanBackRate float = -(turnRate / 3.0)
-var scanBackTicks float = 15.0
-var scanBackCounter float = 0.0
 
-// Pick a random point on a circle around the arena center.
-// Sets targetX, targetY, and axis (tangent to the circle).
+// Radar sweep
+var sweepRate float = 8.0
+var sweepDir float = 1.0
+
+// Scanback: when we detect an enemy, briefly reverse radar to re-scan
+var scanBackTicks int = 0
+var scanBackMax int = 6
+
+// Track last scan info for gun aim
+var lastScanBearing angle = angle(0)
+var lastScanDist float = 0.0
+var hasScanData bool = false
+
 func pickTarget() {
 	cx := arenaWidth() * 0.5
 	cy := arenaHeight() * 0.5
+	// Random angle around center
 	theta := angle(random(360))
-	radius := arenaWidth() * 0.2 + randomFloat() * 60.0
-	targetX = cx + cos(theta) * radius
-	targetY = cy + sin(theta) * radius
-	// Radius heading is theta+90; tangent is perpendicular to that
-	axis = theta
+	radius := arenaWidth() * 0.2 + randomFloat() * 80.0
+
+	// Place target at angle theta from center
+	// For heading-to-position: dx = sin(heading), dy = -cos(heading)
+	// But here theta is a parametric angle, and we use math trig:
+	// sin/cos in RBL are standard math (sin(0)=0, cos(0)=1)
+	targetX = cx + sin(theta) * radius
+	targetY = cy - cos(theta) * radius
+
+	// Tangent to the circle is perpendicular to the radius direction.
+	// The radius direction in heading terms is theta (since we used
+	// sin(theta) for dx, -cos(theta) for dy, same as heading convention).
+	// So tangent is theta + 90.
+	axis = theta + angle(90)
 }
 
 func init() {
@@ -34,6 +50,7 @@ func init() {
 	setGunColor(120, 120, 120)
 	setRadarColor(255, 200, 0)
 	pickTarget()
+	setScanWidth(8.0)
 }
 
 func tick() {
@@ -43,8 +60,8 @@ func tick() {
 	if phase == 0 {
 		// Head to target point
 		setHeading(getHeading() + bearingToTarget)
-		spd = 60.0
-		if dist < 30.0 {
+		spd = 70.0
+		if dist < 25.0 {
 			phase = 1
 		}
 	}
@@ -52,57 +69,80 @@ func tick() {
 	if phase == 1 {
 		// Oscillate along tangent axis
 		setHeading(axis)
-		if dist > 25.0 {
+
+		// If we drift too far from the target, correct by flipping direction
+		if dist > 60.0 {
 			if abs(float(bearingToTarget)) < 90.0 {
-				spd = 60.0
+				spd = 65.0
 			} else {
-				spd = -60.0
+				spd = -65.0
 			}
 		}
 	}
 
 	setSpeed(spd)
 
-	// Radar sweep with scanback: briefly reverse on detection
-	if scanBackCounter > 0.0 && scanBackCounter != scanBackTicks {
-		setRadarTurnRate(scanBackRate)
-		setGunHeading(getRadarHeading() + angle(scanBackRate))
+	// Radar sweep with scanback
+	if scanBackTicks > 0 {
+		// Reverse radar briefly to re-acquire target
+		setRadarTurnRate(sweepRate * sweepDir * -1.0)
+		scanBackTicks = scanBackTicks - 1
 	} else {
-		setRadarTurnRate(turnRate)
-		setGunHeading(getRadarHeading() + angle(turnRate))
+		setRadarTurnRate(sweepRate * sweepDir)
+	}
+
+	// Gun tracking: if we have recent scan data, aim gun at where we saw the enemy
+	if hasScanData {
+		// Point gun at last known scan bearing (absolute = heading + relative bearing)
+		gunTarget := getHeading() + lastScanBearing
+		setGunHeading(gunTarget)
+	} else {
+		// No scan data, gun follows radar
+		setGunHeading(getRadarHeading())
 	}
 
 	debugInt(phase)
-	debugFloat(spd)
-	debugAngle(bearingToTarget)
 	debugFloat(dist)
 }
 
 on wallHit(bearing angle) {
 	if phase == 0 {
+		// Didn't reach target, start oscillating anyway
 		phase = 1
 		setHeading(axis)
-		spd = 50.0
+		spd = 55.0
 	} else {
+		// Reverse direction
 		spd = spd * -1.0
 	}
 }
 
 on scan(distTo float, bearing angle) {
-	if scanBackCounter == 0.0 {
-		scanBackCounter = scanBackTicks
-	} else {
-		scanBackCounter -= 1.0
-	}
+	// Store scan data for gun tracking
+	lastScanBearing = bearing
+	lastScanDist = distTo
+	hasScanData = true
 
-	gunRadarDiff := getGunHeading() - getRadarHeading()
-	if getGunHeat() == 0.0 && gunRadarDiff < angle(5.0) {
-		fire(4.0)
+	// Start scanback: briefly reverse radar to keep enemy in sight
+	scanBackTicks = scanBackMax
+
+	// Fire with power based on distance
+	if getGunHeat() == 0.0 {
+		if distTo < 120.0 {
+			fire(4.0)
+		} else {
+			if distTo < 300.0 {
+				fire(2.5)
+			} else {
+				fire(1.0)
+			}
+		}
 	}
 }
 
 on hit(damage float, bearing angle) {
-	// Pick a new target when hit
+	// Pick a new target when hit to be unpredictable
 	pickTarget()
 	phase = 0
+	spd = 70.0
 }

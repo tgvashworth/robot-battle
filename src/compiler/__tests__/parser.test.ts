@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest"
 import type {
+	ArrayLiteral,
 	AssignStmt,
 	BinaryExpr,
 	Block,
@@ -620,6 +621,98 @@ func tick() {
 		it("does not hang on completely empty input", () => {
 			const { errors } = parseSource("")
 			expect(errors.hasErrors()).toBe(true)
+		})
+	})
+
+	describe("while statement", () => {
+		it("parses while loop", () => {
+			const program = parseValid(`robot "T"
+func tick() {
+	while x > 0 {
+		break
+	}
+}`)
+			const stmt = program.funcs[0]!.body.stmts[0] as ForStmt
+			expect(stmt.kind).toBe("ForStmt")
+			expect(stmt.init).toBeNull()
+			expect(stmt.condition).not.toBeNull()
+			expect(stmt.post).toBeNull()
+		})
+
+		it("parses while with complex condition", () => {
+			const program = parseValid(`robot "T"
+func tick() {
+	while x > 0 && y < 10 {
+		break
+	}
+}`)
+			const stmt = program.funcs[0]!.body.stmts[0] as ForStmt
+			expect(stmt.kind).toBe("ForStmt")
+			expect(stmt.condition).not.toBeNull()
+			const cond = stmt.condition as BinaryExpr
+			expect(cond.op).toBe("&&")
+		})
+	})
+
+	describe("array literals", () => {
+		it("parses array literal with integers", () => {
+			const program = parseValid(`robot "T"
+func tick() {
+	x := [1, 2, 3]
+}`)
+			const decl = program.funcs[0]!.body.stmts[0] as ShortDeclStmt
+			const arr = decl.values[0] as ArrayLiteral
+			expect(arr.kind).toBe("ArrayLiteral")
+			expect(arr.elements).toHaveLength(3)
+			expect((arr.elements[0] as IntLiteral).value).toBe(1)
+			expect((arr.elements[1] as IntLiteral).value).toBe(2)
+			expect((arr.elements[2] as IntLiteral).value).toBe(3)
+		})
+
+		it("parses array literal with floats", () => {
+			const program = parseValid(`robot "T"
+func tick() {
+	x := [1.0, 2.0, 3.0]
+}`)
+			const decl = program.funcs[0]!.body.stmts[0] as ShortDeclStmt
+			const arr = decl.values[0] as ArrayLiteral
+			expect(arr.kind).toBe("ArrayLiteral")
+			expect(arr.elements).toHaveLength(3)
+			expect((arr.elements[0] as FloatLiteral).value).toBe(1.0)
+		})
+
+		it("parses array literal in var declaration", () => {
+			const program = parseValid(`robot "T"
+func tick() {
+	var xs [3]int = [10, 20, 30]
+}`)
+			const stmt = program.funcs[0]!.body.stmts[0] as VarStmt
+			expect(stmt.init).not.toBeNull()
+			const arr = stmt.init as ArrayLiteral
+			expect(arr.kind).toBe("ArrayLiteral")
+			expect(arr.elements).toHaveLength(3)
+		})
+
+		it("parses single-element array literal", () => {
+			const program = parseValid(`robot "T"
+func tick() {
+	x := [42]
+}`)
+			const decl = program.funcs[0]!.body.stmts[0] as ShortDeclStmt
+			const arr = decl.values[0] as ArrayLiteral
+			expect(arr.kind).toBe("ArrayLiteral")
+			expect(arr.elements).toHaveLength(1)
+		})
+
+		it("parses array literal with trailing comma", () => {
+			const program = parseValid(`robot "T"
+func tick() {
+	x := [1, 2, 3,]
+}`)
+			const decl = program.funcs[0]!.body.stmts[0] as ShortDeclStmt
+			const arr = decl.values[0] as ArrayLiteral
+			expect(arr.kind).toBe("ArrayLiteral")
+			expect(arr.elements).toHaveLength(3)
 		})
 	})
 })

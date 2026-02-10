@@ -75,6 +75,7 @@ describe("Lexer", () => {
 			"if",
 			"else",
 			"for",
+			"while",
 			"switch",
 			"case",
 			"default",
@@ -191,6 +192,45 @@ on scan(distance float, bearing angle) {
 			TokenKind.Or,
 			TokenKind.Not,
 			TokenKind.Ident,
+		])
+	})
+
+	it("tokenizes while keyword", () => {
+		const kinds = tokenKinds("while x > 0 {")
+		expect(kinds).toEqual([
+			TokenKind.While,
+			TokenKind.Ident,
+			TokenKind.Gt,
+			TokenKind.Int,
+			TokenKind.LBrace,
+		])
+	})
+
+	it("tokenizes while as keyword not identifier", () => {
+		const tokens = new Lexer("while").tokenize()
+		expect(tokens[0]!.kind).toBe(TokenKind.While)
+		expect(tokens[0]!.kind).not.toBe(TokenKind.Ident)
+	})
+
+	it("tokenizes array literal syntax", () => {
+		expect(tokenKinds("[1, 2, 3]")).toEqual([
+			TokenKind.LBracket,
+			TokenKind.Int,
+			TokenKind.Comma,
+			TokenKind.Int,
+			TokenKind.Comma,
+			TokenKind.Int,
+			TokenKind.RBracket,
+		])
+	})
+
+	it("tokenizes float array literal", () => {
+		expect(tokenKinds("[1.0, 2.0]")).toEqual([
+			TokenKind.LBracket,
+			TokenKind.Float,
+			TokenKind.Comma,
+			TokenKind.Float,
+			TokenKind.RBracket,
 		])
 	})
 })

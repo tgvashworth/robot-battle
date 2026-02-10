@@ -1,0 +1,155 @@
+robot "DodgeBot"
+
+// DodgeBot: survival-focused bot that prioritizes not getting hit.
+// Moves perpendicular to detected enemies, randomly changes direction,
+// uses narrow radar for fast sweeps, and only fires opportunistically.
+//
+// Strategy:
+// - Constant lateral movement (perpendicular to closest known threat)
+// - Random direction changes every N ticks to be unpredictable
+// - Fast radar sweep to keep situational awareness
+// - Conservative firing: low power, only when gun is aligned
+// - Reverses movement direction when hit to dodge follow-up shots
+
+// Movement
+var moveSpeed float = 75.0
+var moveDir float = 1.0
+var ticksToFlip int = 0
+var flipInterval int = 40
+
+// Enemy awareness
+var lastEnemyBearing angle = angle(0)
+var lastEnemyDist float = 999.0
+var hasTarget bool = false
+var ticksSinceScan int = 0
+
+// Radar
+var radarDir float = 1.0
+
+func init() {
+	setColor(80, 200, 80)
+	setGunColor(60, 150, 60)
+	setRadarColor(150, 255, 150)
+
+	// Narrow scan for fast sweeps
+	setScanWidth(6.0)
+
+	// Start with random direction
+	if random(2) == 0 {
+		moveDir = -1.0
+	}
+	flipInterval = 30 + random(30)
+	ticksToFlip = flipInterval
+}
+
+func tick() {
+	ticksSinceScan = ticksSinceScan + 1
+	ticksToFlip = ticksToFlip - 1
+
+	// Randomly change direction on timer
+	if ticksToFlip <= 0 {
+		moveDir = moveDir * -1.0
+		flipInterval = 25 + random(35)
+		ticksToFlip = flipInterval
+	}
+
+	// Lose target if we haven't scanned in a while
+	if ticksSinceScan > 50 {
+		hasTarget = false
+	}
+
+	// Movement: strafe perpendicular to the enemy
+	if hasTarget {
+		// Compute absolute angle to enemy
+		enemyAbs := getHeading() + lastEnemyBearing
+		// Move perpendicular (90 degrees offset)
+		strafeAngle := enemyAbs + angle(90)
+		setHeading(strafeAngle)
+		setSpeed(moveSpeed * moveDir)
+	} else {
+		// No target, just move in a curving pattern to explore
+		setTurnRate(3.0)
+		setSpeed(moveSpeed * moveDir)
+	}
+
+	// Wall avoidance: steer away from walls by heading toward center
+	margin := 60.0
+	nearWall := false
+	if getX() < margin {
+		nearWall = true
+	}
+	if getX() > arenaWidth() - margin {
+		nearWall = true
+	}
+	if getY() < margin {
+		nearWall = true
+	}
+	if getY() > arenaHeight() - margin {
+		nearWall = true
+	}
+	if nearWall {
+		cx := arenaWidth() * 0.5
+		cy := arenaHeight() * 0.5
+		setHeading(getHeading() + bearingTo(cx, cy))
+		setSpeed(moveSpeed)
+	}
+
+	// Radar: fast continuous sweep
+	setRadarTurnRate(25.0 * radarDir)
+
+	// Gun: aim toward last known enemy position if we have one
+	if hasTarget {
+		gunTarget := getHeading() + lastEnemyBearing
+		setGunHeading(gunTarget)
+	} else {
+		setGunHeading(getRadarHeading())
+	}
+
+	debugFloat(lastEnemyDist)
+}
+
+on scan(distTo float, bearing angle) {
+	lastEnemyBearing = bearing
+	lastEnemyDist = distTo
+	hasTarget = true
+	ticksSinceScan = 0
+
+	// Fire conservatively -- low power for energy efficiency
+	if getGunHeat() == 0.0 {
+		if distTo < 150.0 {
+			fire(2.5)
+		} else {
+			if distTo < 350.0 {
+				fire(1.5)
+			} else {
+				fire(1.0)
+			}
+		}
+	}
+}
+
+on hit(damage float, bearing angle) {
+	// Immediately reverse direction to dodge follow-up shots
+	moveDir = moveDir * -1.0
+	ticksToFlip = flipInterval
+
+	// Update enemy bearing from the hit direction
+	lastEnemyBearing = bearing
+	hasTarget = true
+	ticksSinceScan = 0
+}
+
+on wallHit(bearing angle) {
+	// Reverse direction
+	moveDir = moveDir * -1.0
+	setSpeed(moveSpeed * moveDir)
+}
+
+on scanned(bearing angle) {
+	// Someone is looking at us from this direction -- dodge harder
+	// Random direction change to be unpredictable
+	if random(3) == 0 {
+		moveDir = moveDir * -1.0
+		ticksToFlip = flipInterval
+	}
+}

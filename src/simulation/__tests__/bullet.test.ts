@@ -150,10 +150,10 @@ describe("Bullet Firing and Physics", () => {
 		const robotAfterFire = found!.result.state.robots[0]!
 		expect(robotAfterFire.gunHeat).toBeCloseTo(1.6, 5)
 
-		// At 0.1 cooldown per tick, it takes 16 ticks to reach 0
-		// Verify no bullet is fired for the next 15 ticks
+		// At 0.15 cooldown per tick, it takes 11 ticks to reach 0 (1.6 / 0.15 = 10.67)
+		// Verify no bullet is fired for the next 10 ticks
 		let bulletsFiredDuringCooldown = 0
-		for (let i = 0; i < 15; i++) {
+		for (let i = 0; i < 10; i++) {
 			const result = battle.tick()
 			const firedEvents = result.state.events.filter(
 				(e): e is BulletFiredEvent => e.type === "bullet_fired",
@@ -162,9 +162,8 @@ describe("Bullet Firing and Physics", () => {
 		}
 		expect(bulletsFiredDuringCooldown).toBe(0)
 
-		// On the 16th tick (heat goes from 0.1 to 0), gun becomes cool
-		// On the 17th tick (or the tick after heat=0), robot can fire again
-		// Actually, cooldown happens in applyMovement which is before fire processing
+		// On the 11th tick (heat goes to ~0), gun becomes cool
+		// Cooldown happens in applyMovement which is before fire processing
 		// So let's just check that a second bullet eventually fires
 		let secondBullet = false
 		for (let i = 0; i < 5; i++) {

@@ -525,6 +525,8 @@ export class Parser {
 				return this.parseIfStmt()
 			case TokenKind.For:
 				return this.parseForStmt()
+			case TokenKind.While:
+				return this.parseWhileStmt()
 			case TokenKind.Switch:
 				return this.parseSwitchStmt()
 			case TokenKind.Return:
@@ -609,6 +611,16 @@ export class Parser {
 		}
 
 		// Condition-only for loop: for cond { ... }
+		const condition = this.parseExpr()
+		this.skipNewlines()
+		const body = this.parseBlock()
+		this.expectNewlineOrEnd()
+		return { kind: "ForStmt", init: null, condition, post: null, body, span }
+	}
+
+	private parseWhileStmt(): ForStmt {
+		const span = this.span()
+		this.expect(TokenKind.While)
 		const condition = this.parseExpr()
 		this.skipNewlines()
 		const body = this.parseBlock()
@@ -962,9 +974,30 @@ export class Parser {
 				return { kind: "Ident", name, span }
 			}
 
+			case TokenKind.LBracket: {
+				return this.parseArrayLiteral(span)
+			}
+
 			default:
 				throw this.error(`unexpected token '${this.peek().value}' in expression`)
 		}
+	}
+
+	private parseArrayLiteral(span: Span): Expr {
+		this.expect(TokenKind.LBracket)
+		this.skipNewlines()
+		const elements: Expr[] = []
+		if (!this.check(TokenKind.RBracket)) {
+			elements.push(this.parseExpr())
+			while (this.match(TokenKind.Comma)) {
+				this.skipNewlines()
+				if (this.check(TokenKind.RBracket)) break
+				elements.push(this.parseExpr())
+			}
+		}
+		this.skipNewlines()
+		this.expect(TokenKind.RBracket)
+		return { kind: "ArrayLiteral", elements, span }
 	}
 
 	private parseStructLiteral(typeName: string, span: Span): Expr {

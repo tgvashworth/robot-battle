@@ -1,5 +1,5 @@
 import { useEffect } from "react"
-import { BattleTab } from "./battle/BattleTab"
+import { BattlePanel } from "./battle/BattlePanel"
 import { EditTab } from "./edit/EditTab"
 import { useBattleStore } from "./store/battleStore"
 import { useRobotFileStore } from "./store/robotFileStore"
@@ -71,7 +71,7 @@ export function App() {
 						background: "#f5f5f5",
 					}}
 				>
-					<BattleTab />
+					<BattlePanel />
 				</div>
 			</div>
 		</div>

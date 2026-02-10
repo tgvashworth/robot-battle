@@ -1,6 +1,13 @@
 import { Application, Container, Graphics, Text, TextStyle } from "pixi.js"
 import type { BattleRenderer, RenderOptions } from "../../spec/renderer"
-import type { ArenaConfig, BulletState, GameState, RobotState } from "../../spec/simulation"
+import type {
+	ArenaConfig,
+	BulletState,
+	CookieState,
+	GameState,
+	MineState,
+	RobotState,
+} from "../../spec/simulation"
 import { lerp, lerpAngle } from "./math"
 
 const DEFAULT_OPTIONS: RenderOptions = {
@@ -12,16 +19,16 @@ const DEFAULT_OPTIONS: RenderOptions = {
 	backgroundColor: 0x111118,
 }
 
-const ROBOT_WIDTH = 18
-const ROBOT_LENGTH = 26
-const GUN_LENGTH = 16
+const ROBOT_WIDTH = 14
+const ROBOT_LENGTH = 20
+const GUN_LENGTH = 12
 const GUN_WIDTH = 2
-const RADAR_ARC_RADIUS = 150
+const RADAR_ARC_RADIUS = 120
 const BULLET_RADIUS = 3
-const HEALTH_BAR_WIDTH = 24
+const HEALTH_BAR_WIDTH = 20
 const HEALTH_BAR_HEIGHT = 3
 const HEALTH_BAR_OFFSET_Y = 17
-const NAME_OFFSET_Y = -19
+const NAME_OFFSET_Y = -16
 
 const DEG_TO_RAD = Math.PI / 180
 
@@ -43,6 +50,21 @@ interface RobotVisual {
 interface BulletVisual {
 	gfx: Graphics
 }
+
+interface MineVisual {
+	gfx: Graphics
+}
+
+interface CookieVisual {
+	gfx: Graphics
+}
+
+const MINE_RADIUS = 8
+const MINE_COLOR = 0xff4422
+const MINE_INNER_COLOR = 0xff8844
+const COOKIE_RADIUS = 10
+const COOKIE_COLOR = 0x22dd44
+const COOKIE_CROSS_COLOR = 0xffffff
 
 /**
  * Creates a PixiJS v8 BattleRenderer.
@@ -76,6 +98,8 @@ export function createRenderer(): BattleRenderer {
 	// Visual object pools keyed by entity ID
 	const robotVisuals = new Map<number, RobotVisual>()
 	const bulletVisuals = new Map<number, BulletVisual>()
+	const mineVisuals = new Map<number, MineVisual>()
+	const cookieVisuals = new Map<number, CookieVisual>()
 
 	// Background grid graphic
 	let gridGraphic: Graphics | null = null
@@ -202,6 +226,45 @@ export function createRenderer(): BattleRenderer {
 		return { gfx }
 	}
 
+	function createMineVisual(mine: MineState): MineVisual {
+		const gfx = new Graphics()
+		// Outer circle
+		gfx.circle(0, 0, MINE_RADIUS)
+		gfx.fill(MINE_COLOR)
+		// Inner warning dot
+		gfx.circle(0, 0, MINE_RADIUS * 0.4)
+		gfx.fill(MINE_INNER_COLOR)
+		// Warning cross
+		const arm = MINE_RADIUS * 0.6
+		gfx.moveTo(-arm, 0)
+		gfx.lineTo(arm, 0)
+		gfx.moveTo(0, -arm)
+		gfx.lineTo(0, arm)
+		gfx.stroke({ width: 1.5, color: MINE_INNER_COLOR })
+		gfx.x = mine.x
+		gfx.y = mine.y
+		entityLayer!.addChild(gfx)
+		return { gfx }
+	}
+
+	function createCookieVisual(cookie: CookieState): CookieVisual {
+		const gfx = new Graphics()
+		// Outer circle
+		gfx.circle(0, 0, COOKIE_RADIUS)
+		gfx.fill(COOKIE_COLOR)
+		// Plus/cross shape
+		const arm = COOKIE_RADIUS * 0.55
+		const thickness = 2
+		gfx.rect(-arm, -thickness / 2, arm * 2, thickness)
+		gfx.fill(COOKIE_CROSS_COLOR)
+		gfx.rect(-thickness / 2, -arm, thickness, arm * 2)
+		gfx.fill(COOKIE_CROSS_COLOR)
+		gfx.x = cookie.x
+		gfx.y = cookie.y
+		entityLayer!.addChild(gfx)
+		return { gfx }
+	}
+
 	function drawGrid(): void {
 		if (!gridGraphic || !arena) return
 		gridGraphic.clear()
@@ -321,6 +384,22 @@ export function createRenderer(): BattleRenderer {
 			if (!activeBulletIds.has(id)) {
 				visual.gfx.destroy()
 				bulletVisuals.delete(id)
+			}
+		}
+
+		const activeMineIds = new Set(frame.mines.map((m) => m.id))
+		for (const [id, visual] of mineVisuals) {
+			if (!activeMineIds.has(id)) {
+				visual.gfx.destroy()
+				mineVisuals.delete(id)
+			}
+		}
+
+		const activeCookieIds = new Set(frame.cookies.map((c) => c.id))
+		for (const [id, visual] of cookieVisuals) {
+			if (!activeCookieIds.has(id)) {
+				visual.gfx.destroy()
+				cookieVisuals.delete(id)
 			}
 		}
 	}
@@ -448,6 +527,28 @@ export function createRenderer(): BattleRenderer {
 				visual.gfx.y = interp.y
 			}
 
+			// Render mines
+			for (const mine of frame.mines) {
+				let visual = mineVisuals.get(mine.id)
+				if (!visual) {
+					visual = createMineVisual(mine)
+					mineVisuals.set(mine.id, visual)
+				}
+				visual.gfx.x = mine.x
+				visual.gfx.y = mine.y
+			}
+
+			// Render cookies
+			for (const cookie of frame.cookies) {
+				let visual = cookieVisuals.get(cookie.id)
+				if (!visual) {
+					visual = createCookieVisual(cookie)
+					cookieVisuals.set(cookie.id, visual)
+				}
+				visual.gfx.x = cookie.x
+				visual.gfx.y = cookie.y
+			}
+
 			// PixiJS auto-renders if autoStart is true (default).
 			// For manual control, call app.render() if autoStart was false.
 			app.render()
@@ -485,6 +586,16 @@ export function createRenderer(): BattleRenderer {
 			}
 			bulletVisuals.clear()
 
+			for (const visual of mineVisuals.values()) {
+				visual.gfx.destroy()
+			}
+			mineVisuals.clear()
+
+			for (const visual of cookieVisuals.values()) {
+				visual.gfx.destroy()
+			}
+			cookieVisuals.clear()
+
 			currentFrame = null
 			previousFrame = null
 		},
@@ -505,6 +616,16 @@ export function createRenderer(): BattleRenderer {
 				visual.gfx.destroy()
 			}
 			bulletVisuals.clear()
+
+			for (const visual of mineVisuals.values()) {
+				visual.gfx.destroy()
+			}
+			mineVisuals.clear()
+
+			for (const visual of cookieVisuals.values()) {
+				visual.gfx.destroy()
+			}
+			cookieVisuals.clear()
 
 			// Destroy PixiJS app
 			if (app) {

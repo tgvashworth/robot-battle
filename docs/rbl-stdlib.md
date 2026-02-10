@@ -79,9 +79,9 @@ All bearings are relative to your robot's heading: 0 = straight ahead, positive 
 
 | Function                      | Description                                                |
 |-------------------------------|------------------------------------------------------------|
-| `setSpeed(speed float)`       | Set desired speed (-100 to 100). Negative = reverse.       |
+| `setSpeed(speed float)`       | Set desired speed (-120 to 120). Negative = reverse.       |
 | `setHeading(hdg angle)`       | Turn toward heading. Sets turn rate via angle difference — call every tick to track a target. |
-| `setTurnRate(rate float)`     | Set body turn rate in deg/tick (max 10).                   |
+| `setTurnRate(rate float)`     | Set body turn rate in deg/tick (max 12).                   |
 | `getX() float`                | Current X position.                                        |
 | `getY() float`                | Current Y position.                                        |
 | `getHeading() angle`          | Current body heading (0=north, clockwise).                 |
@@ -95,7 +95,7 @@ All bearings are relative to your robot's heading: 0 = straight ahead, positive 
 
 | Function                        | Description                                              |
 |---------------------------------|----------------------------------------------------------|
-| `setGunTurnRate(rate float)`    | Set gun turn rate in deg/tick (max 20).                  |
+| `setGunTurnRate(rate float)`    | Set gun turn rate in deg/tick (max 25).                  |
 | `setGunHeading(hdg angle)`      | Turn gun toward heading. Same caveats as `setHeading`.   |
 | `getGunHeading() angle`         | Current absolute gun heading.                            |
 | `getGunHeat() float`            | Gun heat. 0 = ready to fire.                             |
@@ -178,11 +178,11 @@ The `debug()` overload automatically routes to the correct function based on arg
 
 | Parameter             | Default | Notes                                    |
 |-----------------------|---------|------------------------------------------|
-| Max speed             | 100     | Units per second. Negative = reverse.    |
-| Acceleration          | 5.0     | Per tick.                                |
-| Deceleration          | 5.0     | Per tick.                                |
-| Max body turn rate    | 10      | Degrees per tick.                        |
-| Max gun turn rate     | 20      | Degrees per tick.                        |
+| Max speed             | 120     | Units per second. Negative = reverse.    |
+| Acceleration          | 8.0     | Per tick.                                |
+| Deceleration          | 8.0     | Per tick.                                |
+| Max body turn rate    | 12      | Degrees per tick.                        |
+| Max gun turn rate     | 25      | Degrees per tick.                        |
 | Max radar turn rate   | 45      | Degrees per tick.                        |
 | Default scan width    | 10      | Degrees.                                 |
 | Start health          | 100     |                                          |
@@ -190,7 +190,7 @@ The `debug()` overload automatically routes to the correct function based on arg
 | Energy regen          | 0.1     | Per tick.                                |
 | Fire cost             | `power * 1.0` energy |                              |
 | Gun heat per shot     | 1.0     |                                          |
-| Gun cooldown rate     | 0.1     | Per tick.                                |
+| Gun cooldown rate     | 0.15    | Per tick.                                |
 | Wall damage           | `speed * 0.1` | Speed zeroed on impact.            |
 | Ram damage            | `0.5 + speed * 0.02` | Only on initial contact.      |
 | Arena size            | 800 x 800 |                                       |

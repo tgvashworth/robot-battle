@@ -1,22 +1,14 @@
 robot "NothingBot"
 
-type IntResult struct {
-	value int
-}
-type AngleResult struct {
-	value angle
+// NothingBot: sits still, does absolutely nothing.
+// Serves as a baseline target for testing other bots.
+
+func init() {
+	setColor(128, 128, 128)
+	setGunColor(100, 100, 100)
+	setRadarColor(160, 160, 160)
 }
 
 func tick() {
-	var intResult IntResult = getIntResult()
-	var stringResult AngleResult = getAngleResult()
-	var invalide IntResult = getAngleResult() // This should cause a type error
-}
-
-func getIntResult() IntResult {
-	return IntResult{value: 42}
-}
-
-func getAngleResult() AngleResult {
-	return AngleResult{value: angle(90.0)}
+	// Just sit here and accept my fate.
 }

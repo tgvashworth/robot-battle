@@ -1,0 +1,170 @@
+robot "CircleBot"
+
+// CircleBot: Orbits a detected enemy at medium range while maintaining
+// a radar lock. Uses predictive gun aiming based on enemy distance and
+// bullet travel time. Maintains distance by adjusting orbit radius.
+//
+// Strategy:
+// - Phase 0: Search for enemy with radar sweep
+// - Phase 1: Lock onto enemy, orbit at ~250 units range
+// - Radar oscillates tightly around the enemy bearing for a lock
+// - Gun leads slightly based on orbit direction
+// - Adjusts speed to maintain preferred orbital distance
+
+var phase int = 0
+
+// Enemy tracking
+var enemyBearing angle = angle(0)
+var enemyDist float = 0.0
+var enemyAbsAngle angle = angle(0)
+var ticksSinceScan int = 0
+var scanLostThreshold int = 25
+
+// Orbit parameters
+var orbitDist float = 250.0
+var orbitDir float = 1.0
+var orbitSpeed float = 65.0
+
+// Radar lock oscillation
+var radarOscDir float = 1.0
+
+func init() {
+	setColor(180, 50, 220)
+	setGunColor(140, 30, 180)
+	setRadarColor(220, 120, 255)
+
+	setScanWidth(10.0)
+
+	// Random orbit direction
+	if random(2) == 0 {
+		orbitDir = -1.0
+	}
+}
+
+func tick() {
+	ticksSinceScan = ticksSinceScan + 1
+
+	if phase == 0 {
+		// Search mode: wide radar sweep, cruise toward center
+		setScanWidth(18.0)
+		setRadarTurnRate(22.0)
+
+		cx := arenaWidth() * 0.5
+		cy := arenaHeight() * 0.5
+		centerBearing := bearingTo(cx, cy)
+		setHeading(getHeading() + centerBearing)
+		setSpeed(45.0)
+
+		setGunHeading(getRadarHeading())
+
+		// If we've been searching forever, just keep sweeping
+	}
+
+	if phase == 1 {
+		// Orbit mode: circle the enemy at preferred distance
+		setScanWidth(12.0)
+
+		// Update absolute angle to enemy
+		enemyAbsAngle = getHeading() + enemyBearing
+
+		// Radar lock: oscillate tightly around enemy
+		radarTarget := enemyAbsAngle + angle(6.0) * radarOscDir
+		setRadarHeading(radarTarget)
+		radarOscDir = radarOscDir * -1.0
+
+		// Movement: orbit perpendicular to enemy, with distance correction
+		// Perpendicular = enemy bearing + 90 degrees
+		perpAngle := enemyAbsAngle + angle(90) * orbitDir
+
+		// Add distance correction: if too far, turn slightly toward enemy
+		// If too close, turn slightly away
+		distError := enemyDist - orbitDist
+		// Correction factor: about 1 degree per 10 units of distance error
+		correction := distError * 0.1
+		if correction > 30.0 { correction = 30.0 }
+		if correction < -30.0 { correction = -30.0 }
+
+		// Apply correction: positive error = too far = turn toward enemy
+		// The orbit heading is perpendicular; adding negative angle (toward enemy)
+		// means subtracting from the perpendicular
+		moveAngle := perpAngle - angle(correction) * orbitDir
+		setHeading(moveAngle)
+
+		// Speed control: faster when far, slower when close
+		if enemyDist > orbitDist + 80.0 {
+			setSpeed(85.0)
+		} else {
+			if enemyDist < orbitDist - 80.0 {
+				setSpeed(40.0)
+			} else {
+				setSpeed(orbitSpeed)
+			}
+		}
+
+		// Gun aiming: lead the target slightly in orbit direction
+		// At power 2.5, bullet speed = 35 - 3*2.5 = 27.5
+		// Travel time ~ dist / 27.5
+		// But we approximate: just aim at the enemy with slight lead
+		gunAngle := enemyAbsAngle
+		setGunHeading(gunAngle)
+
+		// Fire with distance-scaled power
+		if getGunHeat() == 0.0 {
+			if enemyDist < 150.0 {
+				fire(4.0)
+			} else {
+				if enemyDist < 300.0 {
+					fire(2.5)
+				} else {
+					fire(1.5)
+				}
+			}
+		}
+
+		// Lost target check
+		if ticksSinceScan > scanLostThreshold {
+			phase = 0
+		}
+	}
+
+	// Wall avoidance
+	wallMargin := 55.0
+	if getX() < wallMargin || getX() > arenaWidth() - wallMargin || getY() < wallMargin || getY() > arenaHeight() - wallMargin {
+		cx := arenaWidth() * 0.5
+		cy := arenaHeight() * 0.5
+		setHeading(getHeading() + bearingTo(cx, cy))
+		setSpeed(60.0)
+	}
+
+	debugInt(phase)
+	debugFloat(enemyDist)
+}
+
+on scan(distTo float, bearing angle) {
+	enemyBearing = bearing
+	enemyDist = distTo
+	ticksSinceScan = 0
+
+	if phase == 0 {
+		phase = 1
+	}
+}
+
+on wallHit(bearing angle) {
+	// Reverse orbit direction to escape wall
+	orbitDir = orbitDir * -1.0
+	setSpeed(50.0)
+}
+
+on hit(damage float, bearing angle) {
+	// Reverse orbit direction to dodge follow-up
+	if random(2) == 0 {
+		orbitDir = orbitDir * -1.0
+	}
+	// Update enemy bearing from hit direction
+	enemyBearing = bearing
+	ticksSinceScan = 0
+	if phase == 0 {
+		phase = 1
+	}
+}

@@ -1623,4 +1623,287 @@ func tick() {
 			expect(debugCalls[2]!.args[0]).toBe(30)
 		})
 	})
+
+	describe("while loops", () => {
+		it("while loop executes correct number of times", async () => {
+			const source = `${R}func tick() {
+  x := 0
+  while x < 5 {
+    debugInt(x)
+    x += 1
+  }
+}`
+			const { wasm } = compile(source)
+			const { instance, calls } = await instantiate(wasm)
+			const tick = instance.exports.tick as () => void
+			tick()
+			const debugCalls = calls.filter((c) => c.name === "debugInt")
+			expect(debugCalls.length).toBe(5)
+			expect(debugCalls[0]!.args[0]).toBe(0)
+			expect(debugCalls[1]!.args[0]).toBe(1)
+			expect(debugCalls[2]!.args[0]).toBe(2)
+			expect(debugCalls[3]!.args[0]).toBe(3)
+			expect(debugCalls[4]!.args[0]).toBe(4)
+		})
+
+		it("while false does not execute body", async () => {
+			const source = `${R}func tick() {
+  while false {
+    debugInt(1)
+  }
+}`
+			const { wasm } = compile(source)
+			const { instance, calls } = await instantiate(wasm)
+			const tick = instance.exports.tick as () => void
+			tick()
+			expect(calls.filter((c) => c.name === "debugInt").length).toBe(0)
+		})
+
+		it("break exits while loop", async () => {
+			const source = `${R}func tick() {
+  x := 0
+  while true {
+    if x == 3 {
+      break
+    }
+    debugInt(x)
+    x += 1
+  }
+}`
+			const { wasm } = compile(source)
+			const { instance, calls } = await instantiate(wasm)
+			const tick = instance.exports.tick as () => void
+			tick()
+			const debugCalls = calls.filter((c) => c.name === "debugInt")
+			expect(debugCalls.length).toBe(3)
+			expect(debugCalls[0]!.args[0]).toBe(0)
+			expect(debugCalls[1]!.args[0]).toBe(1)
+			expect(debugCalls[2]!.args[0]).toBe(2)
+		})
+
+		it("continue works in while loop", async () => {
+			const source = `${R}func tick() {
+  x := 0
+  while x < 5 {
+    x += 1
+    if x == 3 {
+      continue
+    }
+    debugInt(x)
+  }
+}`
+			const { wasm } = compile(source)
+			const { instance, calls } = await instantiate(wasm)
+			const tick = instance.exports.tick as () => void
+			tick()
+			const debugCalls = calls.filter((c) => c.name === "debugInt")
+			expect(debugCalls.length).toBe(4)
+			expect(debugCalls[0]!.args[0]).toBe(1)
+			expect(debugCalls[1]!.args[0]).toBe(2)
+			expect(debugCalls[2]!.args[0]).toBe(4)
+			expect(debugCalls[3]!.args[0]).toBe(5)
+		})
+
+		it("while loop with global variable", async () => {
+			const source = `${R}
+var counter int
+func tick() {
+  while counter < 3 {
+    counter += 1
+  }
+  debugInt(counter)
+}`
+			const { wasm } = compile(source)
+			const { instance, calls } = await instantiate(wasm)
+			const tick = instance.exports.tick as () => void
+			tick()
+			const debugCalls = calls.filter((c) => c.name === "debugInt")
+			expect(debugCalls.length).toBe(1)
+			expect(debugCalls[0]!.args[0]).toBe(3)
+		})
+	})
+
+	describe("array literals", () => {
+		it("initializes local int array with literal", async () => {
+			const source = `${R}func tick() {
+  xs := [10, 20, 30]
+  debug(xs[0])
+  debug(xs[1])
+  debug(xs[2])
+}`
+			const { wasm } = compile(source)
+			const { instance, calls } = await instantiate(wasm)
+			const tick = instance.exports.tick as () => void
+			tick()
+			const debugCalls = calls.filter((c) => c.name === "debugInt")
+			expect(debugCalls.length).toBe(3)
+			expect(debugCalls[0]!.args[0]).toBe(10)
+			expect(debugCalls[1]!.args[0]).toBe(20)
+			expect(debugCalls[2]!.args[0]).toBe(30)
+		})
+
+		it("initializes local float array with literal", async () => {
+			const source = `${R}func tick() {
+  xs := [1.5, 2.5, 3.5]
+  debug(xs[0])
+  debug(xs[1])
+  debug(xs[2])
+}`
+			const { wasm } = compile(source)
+			const { instance, calls } = await instantiate(wasm)
+			const tick = instance.exports.tick as () => void
+			tick()
+			const debugCalls = calls.filter((c) => c.name === "debugFloat")
+			expect(debugCalls.length).toBe(3)
+			expect(debugCalls[0]!.args[0]).toBeCloseTo(1.5)
+			expect(debugCalls[1]!.args[0]).toBeCloseTo(2.5)
+			expect(debugCalls[2]!.args[0]).toBeCloseTo(3.5)
+		})
+
+		it("initializes typed local array with literal", async () => {
+			const source = `${R}func tick() {
+  var xs [3]int = [100, 200, 300]
+  debug(xs[0])
+  debug(xs[1])
+  debug(xs[2])
+}`
+			const { wasm } = compile(source)
+			const { instance, calls } = await instantiate(wasm)
+			const tick = instance.exports.tick as () => void
+			tick()
+			const debugCalls = calls.filter((c) => c.name === "debugInt")
+			expect(debugCalls.length).toBe(3)
+			expect(debugCalls[0]!.args[0]).toBe(100)
+			expect(debugCalls[1]!.args[0]).toBe(200)
+			expect(debugCalls[2]!.args[0]).toBe(300)
+		})
+
+		it("initializes global array with literal in init", async () => {
+			const source = `${R}
+var nums [3]int = [5, 10, 15]
+func tick() {
+  debug(nums[0])
+  debug(nums[1])
+  debug(nums[2])
+}`
+			const { wasm } = compile(source)
+			const { instance, calls } = await instantiate(wasm)
+			const init = instance.exports.init as () => void
+			init()
+			const tick = instance.exports.tick as () => void
+			tick()
+			const debugCalls = calls.filter((c) => c.name === "debugInt")
+			expect(debugCalls.length).toBe(3)
+			expect(debugCalls[0]!.args[0]).toBe(5)
+			expect(debugCalls[1]!.args[0]).toBe(10)
+			expect(debugCalls[2]!.args[0]).toBe(15)
+		})
+
+		it("initializes global float array with literal", async () => {
+			const source = `${R}
+var fs [2]float = [3.14, 2.71]
+func tick() {
+  debug(fs[0])
+  debug(fs[1])
+}`
+			const { wasm } = compile(source)
+			const { instance, calls } = await instantiate(wasm)
+			const init = instance.exports.init as () => void
+			init()
+			const tick = instance.exports.tick as () => void
+			tick()
+			const debugCalls = calls.filter((c) => c.name === "debugFloat")
+			expect(debugCalls.length).toBe(2)
+			expect(debugCalls[0]!.args[0]).toBeCloseTo(3.14)
+			expect(debugCalls[1]!.args[0]).toBeCloseTo(2.71)
+		})
+
+		it("array literal can be modified after init", async () => {
+			const source = `${R}func tick() {
+  xs := [1, 2, 3]
+  xs[1] = 99
+  debug(xs[0])
+  debug(xs[1])
+  debug(xs[2])
+}`
+			const { wasm } = compile(source)
+			const { instance, calls } = await instantiate(wasm)
+			const tick = instance.exports.tick as () => void
+			tick()
+			const debugCalls = calls.filter((c) => c.name === "debugInt")
+			expect(debugCalls.length).toBe(3)
+			expect(debugCalls[0]!.args[0]).toBe(1)
+			expect(debugCalls[1]!.args[0]).toBe(99)
+			expect(debugCalls[2]!.args[0]).toBe(3)
+		})
+
+		it("array literal with expression elements", async () => {
+			const source = `${R}func tick() {
+  a := 10
+  xs := [a, a + 1, a + 2]
+  debug(xs[0])
+  debug(xs[1])
+  debug(xs[2])
+}`
+			const { wasm } = compile(source)
+			const { instance, calls } = await instantiate(wasm)
+			const tick = instance.exports.tick as () => void
+			tick()
+			const debugCalls = calls.filter((c) => c.name === "debugInt")
+			expect(debugCalls.length).toBe(3)
+			expect(debugCalls[0]!.args[0]).toBe(10)
+			expect(debugCalls[1]!.args[0]).toBe(11)
+			expect(debugCalls[2]!.args[0]).toBe(12)
+		})
+
+		it("array literal iterated with for loop", async () => {
+			const source = `${R}func tick() {
+  xs := [10, 20, 30, 40]
+  for i := 0; i < 4; i += 1 {
+    debug(xs[i])
+  }
+}`
+			const { wasm } = compile(source)
+			const { instance, calls } = await instantiate(wasm)
+			const tick = instance.exports.tick as () => void
+			tick()
+			const debugCalls = calls.filter((c) => c.name === "debugInt")
+			expect(debugCalls.length).toBe(4)
+			expect(debugCalls[0]!.args[0]).toBe(10)
+			expect(debugCalls[1]!.args[0]).toBe(20)
+			expect(debugCalls[2]!.args[0]).toBe(30)
+			expect(debugCalls[3]!.args[0]).toBe(40)
+		})
+
+		it("array literal iterated with while loop", async () => {
+			const source = `${R}func tick() {
+  xs := [5, 10, 15]
+  i := 0
+  while i < 3 {
+    debug(xs[i])
+    i += 1
+  }
+}`
+			const { wasm } = compile(source)
+			const { instance, calls } = await instantiate(wasm)
+			const tick = instance.exports.tick as () => void
+			tick()
+			const debugCalls = calls.filter((c) => c.name === "debugInt")
+			expect(debugCalls.length).toBe(3)
+			expect(debugCalls[0]!.args[0]).toBe(5)
+			expect(debugCalls[1]!.args[0]).toBe(10)
+			expect(debugCalls[2]!.args[0]).toBe(15)
+		})
+
+		it("traps on out-of-bounds access on array literal", async () => {
+			const source = `${R}func tick() {
+  xs := [1, 2, 3]
+  debug(xs[5])
+}`
+			const { wasm } = compile(source)
+			const { instance } = await instantiate(wasm)
+			const tick = instance.exports.tick as () => void
+			expect(() => tick()).toThrow()
+		})
+	})
 })

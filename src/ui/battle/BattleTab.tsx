@@ -402,7 +402,7 @@ export function BattleTab() {
 	const hasFrames = totalTicks > 0
 
 	return (
-		<div style={{ padding: "6px 8px", display: "flex", flexDirection: "column", gap: 6 }}>
+		<div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
 			<div
 				style={{
 					padding: "6px 10px",
@@ -456,14 +456,15 @@ export function BattleTab() {
 							<div
 								key={entry.id}
 								style={{
-									display: "flex",
+									display: "inline-flex",
 									alignItems: "center",
-									gap: 4,
-									padding: "2px 6px 2px 8px",
+									gap: 3,
+									padding: "1px 5px 1px 7px",
 									borderRadius: 4,
 									background: "#eef2ff",
 									border: "1px solid #c7d2fe",
-									fontSize: 12,
+									fontSize: 11,
+									lineHeight: 1.6,
 								}}
 							>
 								{file.filename}
@@ -475,8 +476,8 @@ export function BattleTab() {
 										border: "none",
 										cursor: "pointer",
 										color: "#999",
-										fontSize: 13,
-										padding: "0 2px",
+										fontSize: 12,
+										padding: "0 1px",
 										lineHeight: 1,
 									}}
 									title="Remove"
@@ -490,7 +491,7 @@ export function BattleTab() {
 						<span style={{ color: "#999", fontSize: 12 }}>No robots added.</span>
 					)}
 				</div>
-				<div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+				<div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
 					<button
 						type="button"
 						onClick={handleBattle}
@@ -502,6 +503,7 @@ export function BattleTab() {
 							color: "#ffffff",
 							border: "1px solid #1d4ed8",
 							borderRadius: 4,
+							cursor: "pointer",
 						}}
 					>
 						Run Battle

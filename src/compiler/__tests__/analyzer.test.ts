@@ -448,4 +448,52 @@ on wallHit(bearing angle) {
 			analyzeValid(source)
 		})
 	})
+
+	describe("while statement", () => {
+		it("accepts while loop with bool condition", () => {
+			analyzeValid(`${R}func tick() {\nwhile true {\nbreak\n}\n}`)
+		})
+
+		it("accepts while loop with comparison", () => {
+			analyzeValid(`${R}var x int\nfunc tick() {\nwhile x < 10 {\nx += 1\n}\n}`)
+		})
+
+		it("rejects non-bool condition in while", () => {
+			expectError(`${R}func tick() {\nwhile 42 {\nbreak\n}\n}`, "must be bool")
+		})
+
+		it("allows break inside while loop", () => {
+			analyzeValid(`${R}func tick() {\nwhile true {\nbreak\n}\n}`)
+		})
+
+		it("allows continue inside while loop", () => {
+			analyzeValid(`${R}func tick() {\nwhile true {\ncontinue\n}\n}`)
+		})
+	})
+
+	describe("array literals", () => {
+		it("infers array type from literal elements", () => {
+			analyzeValid(`${R}func tick() {\nxs := [1, 2, 3]\ndebugInt(xs[0])\n}`)
+		})
+
+		it("accepts array literal assigned to typed var", () => {
+			analyzeValid(`${R}func tick() {\nvar xs [3]int = [10, 20, 30]\ndebugInt(xs[0])\n}`)
+		})
+
+		it("accepts float array literal", () => {
+			analyzeValid(`${R}func tick() {\nxs := [1.0, 2.0, 3.0]\ndebugFloat(xs[0])\n}`)
+		})
+
+		it("rejects mixed-type array literal", () => {
+			expectError(`${R}func tick() {\nxs := [1, 2.0, 3]\n}`, "expected int, got float")
+		})
+
+		it("rejects array literal size mismatch with declared type", () => {
+			expectError(`${R}func tick() {\nvar xs [3]int = [1, 2]\n}`, "cannot assign")
+		})
+
+		it("rejects assigning int array to float array var", () => {
+			expectError(`${R}func tick() {\nvar xs [3]float = [1, 2, 3]\n}`, "cannot assign")
+		})
+	})
 })

@@ -1,1 +1,9 @@
-["SpinBot.rbl", "SawBot.rbl", "NothingBot.rbl"]
+[
+	"SpinBot.rbl",
+	"SawBot.rbl",
+	"NothingBot.rbl",
+	"WallBot.rbl",
+	"TrackerBot.rbl",
+	"DodgeBot.rbl",
+	"CircleBot.rbl"
+]

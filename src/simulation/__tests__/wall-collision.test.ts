@@ -209,26 +209,25 @@ describe("Wall Collision", () => {
 
 		const battle = createBattle(config, [createWallSeekerBot(), createIdleBot()])
 
-		let stateWithEvents: ReturnType<typeof battle.tick> | undefined
+		let stateWithWallEvent: ReturnType<typeof battle.tick> | undefined
 		for (let i = 0; i < 100; i++) {
 			const result = battle.tick()
-			if (result.state.events.length > 0) {
-				stateWithEvents = result
+			const hasWallHit = result.state.events.some((e) => e.type === "wall_hit")
+			if (hasWallHit) {
+				stateWithWallEvent = result
 				break
 			}
 		}
 
-		expect(stateWithEvents).toBeDefined()
+		expect(stateWithWallEvent).toBeDefined()
 
-		const cloned = structuredClone(stateWithEvents!.state)
-		expect(cloned.events.length).toBeGreaterThan(0)
-		expect(cloned.events[0]!.type).toBe(stateWithEvents!.state.events[0]!.type)
-
+		const cloned = structuredClone(stateWithWallEvent!.state)
 		const wallEvent = cloned.events.find((e): e is WallHitEvent => e.type === "wall_hit")
 		expect(wallEvent).toBeDefined()
-		expect(wallEvent!.damage).toBe(
-			stateWithEvents!.state.events.find((e): e is WallHitEvent => e.type === "wall_hit")!.damage,
+		const originalWallEvent = stateWithWallEvent!.state.events.find(
+			(e): e is WallHitEvent => e.type === "wall_hit",
 		)
+		expect(wallEvent!.damage).toBe(originalWallEvent!.damage)
 
 		battle.destroy()
 	})

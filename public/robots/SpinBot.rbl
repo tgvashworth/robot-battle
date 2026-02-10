@@ -1,11 +1,13 @@
 robot "SpinBot"
 
-// SpinBot: heads toward the middle of the arena, then spins in place.
-// Radar sweeps slowly, gun tracks radar, fires when it detects something.
+// SpinBot: heads toward the center of the arena, then spins in circles.
+// Radar sweeps independently to find targets; fires opportunistically.
+// The circular movement makes it moderately hard to hit.
 
 var phase int = 0
 var targetX float = 0.0
 var targetY float = 0.0
+var spinDir float = 1.0
 
 func init() {
 	setColor(40, 120, 200)
@@ -13,8 +15,13 @@ func init() {
 	setRadarColor(0, 200, 255)
 
 	// Aim for somewhere near the center
-	targetX = arenaWidth() * 0.5 + float(random(80)) - 40.0
-	targetY = arenaHeight() * 0.5 + float(random(80)) - 40.0
+	targetX = arenaWidth() * 0.5 + float(random(100)) - 50.0
+	targetY = arenaHeight() * 0.5 + float(random(100)) - 50.0
+
+	// Randomly pick spin direction
+	if random(2) == 0 {
+		spinDir = -1.0
+	}
 }
 
 func tick() {
@@ -23,34 +30,56 @@ func tick() {
 		bearingToTarget := bearingTo(targetX, targetY)
 		dist := distanceTo(targetX, targetY)
 		setHeading(getHeading() + bearingToTarget)
-		setSpeed(60.0)
+		setSpeed(70.0)
 		if dist < 30.0 {
 			phase = 1
-			setSpeed(0.0)
 		}
 	}
 
 	if phase == 1 {
-		// Spin in place-ish
-		setSpeed(50.0)
-		setTurnRate(3.0)
+		// Spin in circles: constant speed + constant turn rate = circle
+		setSpeed(55.0)
+		setTurnRate(8.0 * spinDir)
+
+		// If we get too close to a wall, increase turn rate to curve away
+		if getX() < 80.0 || getX() > arenaWidth() - 80.0 {
+			setTurnRate(10.0 * spinDir)
+		}
+		if getY() < 80.0 || getY() > arenaHeight() - 80.0 {
+			setTurnRate(10.0 * spinDir)
+		}
 	}
 
-	// Radar sweeps slowly, gun follows radar
-	setRadarTurnRate(-4.0)
+	// Radar sweeps steadily in one direction for maximum coverage
+	setRadarTurnRate(15.0)
+
+	// Gun tries to track the radar
 	setGunHeading(getRadarHeading())
 
 	debugInt(phase)
 }
 
 on wallHit(bearing angle) {
-	// If we hit a wall on the way to center, just start spinning
-	phase = 1
-	setSpeed(0.0)
+	if phase == 0 {
+		// Didn't reach center, start spinning anyway
+		phase = 1
+	}
+	// Reverse spin direction when hitting wall
+	spinDir = spinDir * -1.0
+	setSpeed(55.0)
 }
 
 on scan(distTo float, bearing angle) {
 	if getGunHeat() == 0.0 {
-		fire(4.0)
+		if distTo < 200.0 {
+			fire(3.0)
+		} else {
+			fire(1.5)
+		}
 	}
+}
+
+on hit(damage float, bearing angle) {
+	// When hit, reverse spin for evasion
+	spinDir = spinDir * -1.0
 }

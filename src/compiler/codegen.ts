@@ -1013,6 +1013,11 @@ class WasmCodegen {
 			case "StructLiteral":
 				return this.compileStructLiteral(expr, ctx)
 
+			case "ArrayLiteral":
+				// Array literals are compiled during assignment/declaration.
+				// If used standalone, return 0 as a placeholder.
+				return [OP_I32_CONST, ...signedLEB128(0)]
+
 			case "GroupExpr":
 				return this.compileExpr(expr.expr, ctx)
 		}
@@ -1831,6 +1836,22 @@ class WasmCodegen {
 					code.push(OP_I32_STORE, 0x02, 0x00)
 				}
 			}
+		} else if (init.kind === "ArrayLiteral" && type.kind === "array") {
+			const elemSize = typeSize(type.elementType)
+			for (let i = 0; i < init.elements.length; i++) {
+				const offset = i * elemSize
+				code.push(OP_LOCAL_GET, ...unsignedLEB128(addrLocal))
+				if (offset > 0) {
+					code.push(OP_I32_CONST, ...signedLEB128(offset))
+					code.push(OP_I32_ADD)
+				}
+				code.push(...this.compileExpr(init.elements[i]!, ctx))
+				if (isFloat(type.elementType)) {
+					code.push(OP_F32_STORE, 0x02, 0x00)
+				} else {
+					code.push(OP_I32_STORE, 0x02, 0x00)
+				}
+			}
 		}
 
 		return code
@@ -1868,6 +1889,18 @@ class WasmCodegen {
 				code.push(OP_I32_CONST, ...signedLEB128(baseAddr + field.offset))
 				code.push(...this.compileExpr(fieldInit.value, ctx))
 				if (isFloat(field.type)) {
+					code.push(OP_F32_STORE, 0x02, 0x00)
+				} else {
+					code.push(OP_I32_STORE, 0x02, 0x00)
+				}
+			}
+		} else if (value.kind === "ArrayLiteral" && type.kind === "array") {
+			const elemSize = typeSize(type.elementType)
+			for (let i = 0; i < value.elements.length; i++) {
+				const offset = i * elemSize
+				code.push(OP_I32_CONST, ...signedLEB128(baseAddr + offset))
+				code.push(...this.compileExpr(value.elements[i]!, ctx))
+				if (isFloat(type.elementType)) {
 					code.push(OP_F32_STORE, 0x02, 0x00)
 				} else {
 					code.push(OP_I32_STORE, 0x02, 0x00)
