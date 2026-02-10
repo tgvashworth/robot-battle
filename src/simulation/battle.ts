@@ -513,8 +513,8 @@ export function createBattle(config: GameConfig, robots: RobotModule[]): Battle 
 				// 0=north, clockwise
 				const bearingToTarget = normalizeAngle((Math.atan2(dx, -dy) * 180) / Math.PI)
 
-				// Check if bearingToTarget falls within the sweep arc
-				if (isAngleInSweep(prevAngle, currAngle, bearingToTarget)) {
+				// Check if bearingToTarget falls within the sweep arc (including scan width)
+				if (isAngleInSweep(prevAngle, currAngle, scanner.scanWidth, bearingToTarget)) {
 					// Calculate bearing from target to scanner (for onScanned)
 					const dxBack = scanner.x - target.x
 					const dyBack = scanner.y - target.y
@@ -748,7 +748,7 @@ function createInternalRobot(
 		heading: rng.nextFloat() * 360,
 		speed: 0,
 		gunHeading: rng.nextFloat() * 360,
-		gunHeat: 3.0,
+		gunHeat: 0,
 		radarHeading: rng.nextFloat() * 360,
 		scanWidth: config.physics.defaultScanWidth,
 		health: config.physics.startHealth,
@@ -790,7 +790,7 @@ function resetRobot(robot: InternalRobot, config: GameConfig, rng: PRNG) {
 	robot.heading = rng.nextFloat() * 360
 	robot.speed = 0
 	robot.gunHeading = rng.nextFloat() * 360
-	robot.gunHeat = 3.0
+	robot.gunHeat = 0
 	robot.radarHeading = rng.nextFloat() * 360
 	robot.scanWidth = config.physics.defaultScanWidth
 	robot.health = config.physics.startHealth
@@ -1028,10 +1028,10 @@ function createRobotAPI(
 		setColor: () => {},
 		setGunColor: () => {},
 		setRadarColor: () => {},
-		sin: Math.sin,
-		cos: Math.cos,
-		tan: Math.tan,
-		atan2: Math.atan2,
+		sin: (a) => Math.sin((a * Math.PI) / 180),
+		cos: (a) => Math.cos((a * Math.PI) / 180),
+		tan: (a) => Math.tan((a * Math.PI) / 180),
+		atan2: (y, x) => (Math.atan2(y, x) * 180) / Math.PI,
 		sqrt: Math.sqrt,
 		abs: Math.abs,
 		min: Math.min,
@@ -1114,33 +1114,28 @@ export function lineSegmentIntersectsCircle(
  * If from === to (no sweep), we still check a thin line (exact match).
  * All angles are in [0, 360) degrees.
  */
-function isAngleInSweep(from: number, to: number, angle: number): boolean {
-	// Normalize all angles to [0, 360)
-	const f = normalizeAngle(from)
-	const t = normalizeAngle(to)
+function isAngleInSweep(from: number, to: number, scanWidth: number, angle: number): boolean {
+	// The radar beam has width `scanWidth` centred on the radar heading.
+	// As the radar sweeps from `from` to `to`, the full detected region is
+	// the union of the beam at every position, which is the sweep arc expanded
+	// by scanWidth/2 on each side.
+	const halfWidth = scanWidth / 2
+
+	// Signed shortest-arc difference (positive = clockwise)
+	let diff = to - from
+	if (diff > 180) diff -= 360
+	if (diff < -180) diff += 360
+
+	// Expand the arc: start from the trailing edge of the sweep
+	const startEdge = diff >= 0 ? normalizeAngle(from - halfWidth) : normalizeAngle(to - halfWidth)
+
+	// Total arc size (always clockwise from startEdge)
+	const arcSize = Math.abs(diff) + scanWidth
+
+	// Check if angle is within the arc
 	const a = normalizeAngle(angle)
+	let offset = a - startEdge
+	if (offset < 0) offset += 360
 
-	// If sweep is zero width, still do a thin-angle check
-	// (needed when radar isn't turning)
-	if (f === t) {
-		// Exact match within a small tolerance
-		const diff = Math.abs(a - f)
-		return diff < 0.001 || Math.abs(diff - 360) < 0.001
-	}
-
-	// Determine the sweep direction: from -> to
-	// We calculate the signed angular difference from f to t
-	let sweepSize = t - f
-	if (sweepSize < 0) sweepSize += 360
-
-	// If sweep covers more than 180, treat it as going the short way around
-	// (This handles the case where radar turned by up to maxRadarTurnRate)
-	// Actually, for correctness, the sweep goes in the direction of smallest arc
-	// unless the radar turned more than 180 (unlikely with typical maxRadarTurnRate)
-
-	// Check if angle falls within the arc from f to t going in the sweep direction
-	let angleFromStart = a - f
-	if (angleFromStart < 0) angleFromStart += 360
-
-	return angleFromStart <= sweepSize
+	return offset <= arcSize
 }

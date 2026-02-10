@@ -1,14 +1,18 @@
 import { useEffect } from "react"
 import { BattleTab } from "./battle/BattleTab"
 import { EditTab } from "./edit/EditTab"
+import { useBattleStore } from "./store/battleStore"
 import { useRobotFileStore } from "./store/robotFileStore"
 
 export function App() {
 	const loadFromManifest = useRobotFileStore((s) => s.loadFromManifest)
+	const restoreRoster = useBattleStore((s) => s.restoreRoster)
 
 	useEffect(() => {
-		loadFromManifest()
-	}, [loadFromManifest])
+		loadFromManifest().then(() => {
+			restoreRoster()
+		})
+	}, [loadFromManifest, restoreRoster])
 
 	return (
 		<div
@@ -21,7 +25,7 @@ export function App() {
 		>
 			<header
 				style={{
-					padding: "12px 24px",
+					padding: "8px 24px",
 					background: "#ffffff",
 					borderBottom: "1px solid #e0e0e0",
 					flexShrink: 0,
@@ -33,6 +37,7 @@ export function App() {
 						fontWeight: 600,
 						color: "#1a1a1a",
 						letterSpacing: "-0.01em",
+						margin: 0,
 					}}
 				>
 					Robot Battle

@@ -1,5 +1,7 @@
 import { create } from "zustand"
 import type { GameState } from "../../../spec/simulation"
+import { loadPersistedUI, savePersistedUI } from "./persistence"
+import { useRobotFileStore } from "./robotFileStore"
 
 export type BattleStatus = "idle" | "running" | "finished"
 
@@ -12,6 +14,14 @@ export interface DebugEntry {
 	readonly tick: number
 	readonly type: "int" | "float" | "angle"
 	readonly value: number
+}
+
+function saveRosterFilenames(roster: RosterEntry[]) {
+	const files = useRobotFileStore.getState().files
+	const filenames = roster
+		.map((r) => files.find((f) => f.id === r.fileId)?.filename)
+		.filter((n): n is string => n != null)
+	savePersistedUI({ rosterFilenames: filenames })
 }
 
 export interface BattleState {
@@ -27,6 +37,7 @@ export interface BattleState {
 	robotDebugLogs: Record<string, DebugEntry[]>
 	addToRoster: (fileId: string) => void
 	removeFromRoster: (id: string) => void
+	restoreRoster: () => void
 	startBattle: () => void
 	stop: () => void
 	setStatus: (status: BattleStatus) => void
@@ -53,15 +64,35 @@ export const useBattleStore = create<BattleState>((set) => ({
 	robotDebugLogs: {},
 
 	addToRoster: (fileId: string) => {
-		set((state) => ({
-			roster: [...state.roster, { id: crypto.randomUUID(), fileId }],
-		}))
+		set((state) => {
+			const roster = [...state.roster, { id: crypto.randomUUID(), fileId }]
+			saveRosterFilenames(roster)
+			return { roster }
+		})
 	},
 
 	removeFromRoster: (id: string) => {
-		set((state) => ({
-			roster: state.roster.filter((r) => r.id !== id),
-		}))
+		set((state) => {
+			const roster = state.roster.filter((r) => r.id !== id)
+			saveRosterFilenames(roster)
+			return { roster }
+		})
+	},
+
+	restoreRoster: () => {
+		const persisted = loadPersistedUI()
+		if (!persisted.rosterFilenames?.length) return
+		const files = useRobotFileStore.getState().files
+		const entries: RosterEntry[] = []
+		for (const filename of persisted.rosterFilenames) {
+			const file = files.find((f) => f.filename === filename)
+			if (file) {
+				entries.push({ id: crypto.randomUUID(), fileId: file.id })
+			}
+		}
+		if (entries.length > 0) {
+			set({ roster: entries })
+		}
 	},
 
 	startBattle: () => {

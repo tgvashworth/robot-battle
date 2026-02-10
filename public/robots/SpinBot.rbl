@@ -1,31 +1,56 @@
 robot "SpinBot"
 
-// SpinBot: a simple robot that spins and fires.
-// Drives in circles while continuously firing.
+// SpinBot: heads toward the middle of the arena, then spins in place.
+// Radar sweeps slowly, gun tracks radar, fires when it detects something.
 
-var direction int = 1
+var phase int = 0
+var targetX float = 0.0
+var targetY float = 0.0
+
+func init() {
+	setColor(40, 120, 200)
+	setGunColor(80, 80, 80)
+	setRadarColor(0, 200, 255)
+
+	// Aim for somewhere near the center
+	targetX = arenaWidth() * 0.5 + float(random(80)) - 40.0
+	targetY = arenaHeight() * 0.5 + float(random(80)) - 40.0
+}
 
 func tick() {
-	setSpeed(50.0)
-	setTurnRate(5.0 * float(direction))
-	setGunTurnRate(10.0)
-
-	if getGunHeat() == 0.0 {
-		fire(1.0)
+	if phase == 0 {
+		// Head to center area
+		bearingToTarget := bearingTo(targetX, targetY)
+		dist := distanceTo(targetX, targetY)
+		setHeading(getHeading() + bearingToTarget)
+		setSpeed(60.0)
+		if dist < 30.0 {
+			phase = 1
+			setSpeed(0.0)
+		}
 	}
-}
 
-on scan(distance float, bearing angle) {
-	setGunHeading(bearing)
-	fire(2.0)
-}
+	if phase == 1 {
+		// Spin in place-ish
+		setSpeed(50.0)
+		setTurnRate(3.0)
+	}
 
-on hit(damage float, bearing angle) {
-	// Reverse direction when hit
-	direction = direction * -1
-	setSpeed(80.0)
+	// Radar sweeps slowly, gun follows radar
+	setRadarTurnRate(-4.0)
+	setGunHeading(getRadarHeading())
+
+	debugInt(phase)
 }
 
 on wallHit(bearing angle) {
-	direction = direction * -1
+	// If we hit a wall on the way to center, just start spinning
+	phase = 1
+	setSpeed(0.0)
+}
+
+on scan(distTo float, bearing angle) {
+	if getGunHeat() == 0.0 {
+		fire(4.0)
+	}
 }

@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from "react"
-import type { BattleRenderer, GameLoop } from "../../../spec/renderer"
+import type { BattleRenderer, GameLoop, RenderOptions } from "../../../spec/renderer"
 import type { GameState, RobotModule } from "../../../spec/simulation"
 import { compile, createDebugLog, instantiate } from "../../compiler"
 import type { RobotDebugLog } from "../../compiler"
@@ -11,6 +11,13 @@ import { useRobotFileStore } from "../store/robotFileStore"
 import { RobotStatusPanel } from "./RobotStatusPanel"
 
 const SPEED_OPTIONS = [0.5, 1, 2, 4] as const
+
+const DISPLAY_OPTIONS: { key: keyof RenderOptions; label: string }[] = [
+	{ key: "showScanArcs", label: "Scan arcs" },
+	{ key: "showHealthBars", label: "Health bars" },
+	{ key: "showNames", label: "Names" },
+	{ key: "showGrid", label: "Grid" },
+]
 
 export function BattleTab() {
 	const battleLog = useBattleStore((s) => s.battleLog)
@@ -37,6 +44,35 @@ export function BattleTab() {
 	const tickIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null)
 
 	const [isPaused, setIsPaused] = useState(true)
+	const [displayMenuOpen, setDisplayMenuOpen] = useState(false)
+	const [displayOpts, setDisplayOpts] = useState<Partial<RenderOptions>>({
+		showScanArcs: true,
+		showHealthBars: true,
+		showNames: true,
+		showGrid: true,
+	})
+	const displayMenuRef = useRef<HTMLDivElement>(null)
+
+	// Close display menu on outside click
+	useEffect(() => {
+		if (!displayMenuOpen) return
+		function handleClick(e: MouseEvent) {
+			if (displayMenuRef.current && !displayMenuRef.current.contains(e.target as Node)) {
+				setDisplayMenuOpen(false)
+			}
+		}
+		document.addEventListener("mousedown", handleClick)
+		return () => document.removeEventListener("mousedown", handleClick)
+	}, [displayMenuOpen])
+
+	const toggleDisplayOpt = useCallback(
+		(key: keyof RenderOptions) => {
+			const next = { ...displayOpts, [key]: !displayOpts[key] }
+			setDisplayOpts(next)
+			rendererRef.current?.setOptions(next)
+		},
+		[displayOpts],
+	)
 
 	// Poll the replay source for currentTick updates during playback
 	useEffect(() => {
@@ -366,286 +402,329 @@ export function BattleTab() {
 	const hasFrames = totalTicks > 0
 
 	return (
-		<div style={{ padding: 24, display: "flex", flexDirection: "column", gap: 16 }}>
+		<div style={{ padding: "6px 8px", display: "flex", flexDirection: "column", gap: 6 }}>
 			<div
 				style={{
-					padding: 12,
+					padding: "6px 10px",
 					background: "#ffffff",
-					borderRadius: 8,
+					borderRadius: 6,
 					border: "1px solid #e0e0e0",
+					display: "flex",
+					flexDirection: "column",
+					gap: 6,
 				}}
 			>
 				<div
 					style={{
 						display: "flex",
 						alignItems: "center",
-						justifyContent: "space-between",
-						marginBottom: roster.length > 0 ? 8 : 0,
+						gap: 6,
+						flexWrap: "wrap",
 					}}
 				>
-					<strong
+					<select
+						id="add-robot-select"
 						style={{
 							fontSize: 12,
-							color: "#666",
-							textTransform: "uppercase",
-							letterSpacing: "0.04em",
+							padding: "3px 6px",
+							borderRadius: 4,
+							border: "1px solid #d0d0d0",
+							background: "#fff",
+							color: "#333",
+						}}
+						defaultValue=""
+						onChange={(e) => {
+							if (e.target.value) {
+								addToRoster(e.target.value)
+								e.target.value = ""
+							}
 						}}
 					>
-						Battle Roster
-					</strong>
-					<div style={{ display: "flex", alignItems: "center", gap: 6 }}>
-						<select
-							id="add-robot-select"
-							style={{
-								fontSize: 13,
-								padding: "4px 8px",
-								borderRadius: 6,
-								border: "1px solid #d0d0d0",
-								background: "#fff",
-								color: "#333",
-							}}
-							defaultValue=""
-							onChange={(e) => {
-								if (e.target.value) {
-									addToRoster(e.target.value)
-									e.target.value = ""
-								}
-							}}
-						>
-							<option value="" disabled>
-								Add robot...
+						<option value="" disabled>
+							Add robot...
+						</option>
+						{files.map((file) => (
+							<option key={file.id} value={file.id}>
+								{file.filename}
 							</option>
-							{files.map((file) => (
-								<option key={file.id} value={file.id}>
-									{file.filename}
-								</option>
-							))}
-						</select>
-					</div>
-				</div>
-				{roster.length > 0 && (
-					<div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>
-						{roster.map((entry) => {
-							const file = files.find((f) => f.id === entry.fileId)
-							if (!file) return null
-							return (
-								<div
-									key={entry.id}
-									style={{
-										display: "flex",
-										alignItems: "center",
-										gap: 6,
-										padding: "4px 8px 4px 10px",
-										borderRadius: 6,
-										background: "#eef2ff",
-										border: "1px solid #c7d2fe",
-										fontSize: 13,
-									}}
-								>
-									{file.filename}
-									<button
-										type="button"
-										onClick={() => removeFromRoster(entry.id)}
-										style={{
-											background: "none",
-											border: "none",
-											cursor: "pointer",
-											color: "#999",
-											fontSize: 14,
-											padding: "0 2px",
-											lineHeight: 1,
-										}}
-										title="Remove"
-									>
-										x
-									</button>
-								</div>
-							)
-						})}
-					</div>
-				)}
-				{roster.length === 0 && (
-					<div style={{ color: "#999", fontSize: 13 }}>
-						No robots added. Use the dropdown above to add robots to the battle.
-					</div>
-				)}
-			</div>
-
-			<div style={{ display: "flex", alignItems: "center", gap: 12 }}>
-				<button
-					type="button"
-					onClick={handleBattle}
-					style={{
-						padding: "8px 20px",
-						fontSize: 14,
-						fontWeight: 600,
-						background: "#2563eb",
-						color: "#ffffff",
-						border: "1px solid #1d4ed8",
-						borderRadius: 6,
-					}}
-				>
-					Run Battle ({tickCount} ticks)
-				</button>
-				<label
-					style={{
-						display: "flex",
-						alignItems: "center",
-						gap: 6,
-						color: "#666",
-						fontSize: 13,
-					}}
-				>
-					Ticks:
-					<input
-						type="number"
-						min={1}
-						max={100000}
-						value={tickCount}
-						onChange={(e) => {
-							const val = Number(e.target.value)
-							if (val > 0) {
-								setTickCount(val)
-							}
-						}}
-						style={{
-							width: 80,
-							fontFamily: "'SF Mono', 'Fira Code', Menlo, Consolas, monospace",
-							fontSize: 13,
-							background: "#ffffff",
-							color: "#1a1a1a",
-							border: "1px solid #d0d0d0",
-							borderRadius: 6,
-							padding: "4px 8px",
-						}}
-					/>
-				</label>
-				<label
-					style={{
-						display: "flex",
-						alignItems: "center",
-						gap: 6,
-						color: "#666",
-						fontSize: 13,
-					}}
-				>
-					Seed:
-					<input
-						type="number"
-						value={seed}
-						onChange={(e) => {
-							const val = Number(e.target.value)
-							if (!Number.isNaN(val)) {
-								setSeed(val)
-							}
-						}}
-						style={{
-							width: 80,
-							fontFamily: "'SF Mono', 'Fira Code', Menlo, Consolas, monospace",
-							fontSize: 13,
-							background: "#ffffff",
-							color: "#1a1a1a",
-							border: "1px solid #d0d0d0",
-							borderRadius: 6,
-							padding: "4px 8px",
-						}}
-					/>
-				</label>
-			</div>
-
-			<div>
-				<canvas
-					ref={canvasRef}
-					style={{
-						border: "1px solid #e0e0e0",
-						borderRadius: 8,
-						background: "#111118",
-						display: "block",
-						maxWidth: "100%",
-					}}
-				/>
-				<RobotStatusPanel />
-			</div>
-			{hasFrames && (
-				<div
-					style={{
-						padding: "8px 12px",
-						display: "flex",
-						alignItems: "center",
-						gap: 8,
-						flexWrap: "wrap",
-						background: "#ffffff",
-						borderRadius: 8,
-						border: "1px solid #e0e0e0",
-					}}
-				>
-					<button type="button" onClick={handlePlayPause} style={{ minWidth: 60 }}>
-						{isPaused ? "Play" : "Pause"}
-					</button>
-					<button
-						type="button"
-						onClick={handleStep}
-						style={{ minWidth: 50 }}
-						title="Step one tick forward"
-					>
-						Step
-					</button>
-					<div style={{ display: "flex", alignItems: "center", gap: 4 }}>
-						<span style={{ color: "#888", fontSize: 12 }}>Speed:</span>
-						{SPEED_OPTIONS.map((s) => (
-							<button
-								key={s}
-								type="button"
-								onClick={() => handleSpeedChange(s)}
+						))}
+					</select>
+					{roster.map((entry) => {
+						const file = files.find((f) => f.id === entry.fileId)
+						if (!file) return null
+						return (
+							<div
+								key={entry.id}
 								style={{
-									minWidth: 32,
-									padding: "4px 8px",
+									display: "flex",
+									alignItems: "center",
+									gap: 4,
+									padding: "2px 6px 2px 8px",
+									borderRadius: 4,
+									background: "#eef2ff",
+									border: "1px solid #c7d2fe",
 									fontSize: 12,
-									fontWeight: speed === s ? "bold" : "normal",
-									background: speed === s ? "#e0e0e0" : undefined,
-									borderColor: speed === s ? "#b0b0b0" : undefined,
 								}}
 							>
-								{s}x
-							</button>
-						))}
-					</div>
-					<span
+								{file.filename}
+								<button
+									type="button"
+									onClick={() => removeFromRoster(entry.id)}
+									style={{
+										background: "none",
+										border: "none",
+										cursor: "pointer",
+										color: "#999",
+										fontSize: 13,
+										padding: "0 2px",
+										lineHeight: 1,
+									}}
+									title="Remove"
+								>
+									x
+								</button>
+							</div>
+						)
+					})}
+					{roster.length === 0 && (
+						<span style={{ color: "#999", fontSize: 12 }}>No robots added.</span>
+					)}
+				</div>
+				<div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+					<button
+						type="button"
+						onClick={handleBattle}
 						style={{
-							color: "#666",
+							padding: "4px 12px",
 							fontSize: 12,
-							fontFamily: "'SF Mono', 'Fira Code', Menlo, Consolas, monospace",
+							fontWeight: 600,
+							background: "#2563eb",
+							color: "#ffffff",
+							border: "1px solid #1d4ed8",
+							borderRadius: 4,
 						}}
 					>
-						{currentTick} / {totalTicks}
-					</span>
-					<input
-						type="range"
-						min={0}
-						max={totalTicks}
-						value={currentTick}
-						onChange={handleSeek}
-						style={{ flexGrow: 1, minWidth: 120 }}
-					/>
+						Run Battle
+					</button>
+					<div ref={displayMenuRef} style={{ position: "relative" }}>
+						<button
+							type="button"
+							onClick={() => setDisplayMenuOpen(!displayMenuOpen)}
+							style={{
+								padding: "4px 8px",
+								fontSize: 12,
+								borderRadius: 4,
+								border: "1px solid #d0d0d0",
+								background: displayMenuOpen ? "#f0f0f0" : "#fff",
+								color: "#555",
+								cursor: "pointer",
+							}}
+						>
+							Display
+						</button>
+						{displayMenuOpen && (
+							<div
+								style={{
+									position: "absolute",
+									top: "100%",
+									left: 0,
+									marginTop: 2,
+									background: "#fff",
+									border: "1px solid #d0d0d0",
+									borderRadius: 4,
+									padding: "4px 0",
+									zIndex: 10,
+									boxShadow: "0 2px 8px rgba(0,0,0,0.12)",
+									minWidth: 140,
+								}}
+							>
+								{DISPLAY_OPTIONS.map((opt) => (
+									<label
+										key={opt.key}
+										style={{
+											display: "flex",
+											alignItems: "center",
+											gap: 6,
+											padding: "3px 10px",
+											fontSize: 12,
+											color: "#333",
+											cursor: "pointer",
+											whiteSpace: "nowrap",
+										}}
+									>
+										<input
+											type="checkbox"
+											checked={displayOpts[opt.key] !== false}
+											onChange={() => toggleDisplayOpt(opt.key)}
+											style={{ margin: 0 }}
+										/>
+										{opt.label}
+									</label>
+								))}
+							</div>
+						)}
+					</div>
+					<label
+						style={{
+							display: "flex",
+							alignItems: "center",
+							gap: 4,
+							color: "#666",
+							fontSize: 12,
+						}}
+					>
+						Ticks:
+						<input
+							type="number"
+							min={1}
+							max={100000}
+							value={tickCount}
+							onChange={(e) => {
+								const val = Number(e.target.value)
+								if (val > 0) {
+									setTickCount(val)
+								}
+							}}
+							style={{
+								width: 70,
+								fontFamily: "'SF Mono', 'Fira Code', Menlo, Consolas, monospace",
+								fontSize: 12,
+								background: "#ffffff",
+								color: "#1a1a1a",
+								border: "1px solid #d0d0d0",
+								borderRadius: 4,
+								padding: "3px 6px",
+							}}
+						/>
+					</label>
+					<label
+						style={{
+							display: "flex",
+							alignItems: "center",
+							gap: 4,
+							color: "#666",
+							fontSize: 12,
+						}}
+					>
+						Seed:
+						<input
+							type="number"
+							value={seed}
+							onChange={(e) => {
+								const val = Number(e.target.value)
+								if (!Number.isNaN(val)) {
+									setSeed(val)
+								}
+							}}
+							style={{
+								width: 70,
+								fontFamily: "'SF Mono', 'Fira Code', Menlo, Consolas, monospace",
+								fontSize: 12,
+								background: "#ffffff",
+								color: "#1a1a1a",
+								border: "1px solid #d0d0d0",
+								borderRadius: 4,
+								padding: "3px 6px",
+							}}
+						/>
+					</label>
 				</div>
-			)}
-			{battleLog.length > 0 && (
-				<pre
-					style={{
-						padding: 12,
-						background: "#ffffff",
-						border: "1px solid #e0e0e0",
-						borderRadius: 8,
-						color: "#444",
-						fontSize: 12,
-						lineHeight: 1.6,
-						maxHeight: 200,
-						overflowY: "auto",
-						whiteSpace: "pre-wrap",
-					}}
-				>
-					{battleLog.join("\n")}
-				</pre>
+				{hasFrames && (
+					<div
+						style={{
+							display: "flex",
+							alignItems: "center",
+							gap: 6,
+							flexWrap: "wrap",
+							borderTop: "1px solid #f0f0f0",
+							paddingTop: 6,
+						}}
+					>
+						<button type="button" onClick={handlePlayPause} style={{ minWidth: 44, fontSize: 11 }}>
+							{isPaused ? "Play" : "Pause"}
+						</button>
+						<button
+							type="button"
+							onClick={handleStep}
+							style={{ minWidth: 36, fontSize: 11 }}
+							title="Step one tick forward"
+						>
+							Step
+						</button>
+						<div style={{ display: "flex", alignItems: "center", gap: 3 }}>
+							<span style={{ color: "#888", fontSize: 11 }}>Speed:</span>
+							{SPEED_OPTIONS.map((s) => (
+								<button
+									key={s}
+									type="button"
+									onClick={() => handleSpeedChange(s)}
+									style={{
+										minWidth: 26,
+										padding: "2px 4px",
+										fontSize: 11,
+										fontWeight: speed === s ? "bold" : "normal",
+										background: speed === s ? "#e0e0e0" : undefined,
+										borderColor: speed === s ? "#b0b0b0" : undefined,
+									}}
+								>
+									{s}x
+								</button>
+							))}
+						</div>
+						<span
+							style={{
+								color: "#666",
+								fontSize: 11,
+								fontFamily: "'SF Mono', 'Fira Code', Menlo, Consolas, monospace",
+							}}
+						>
+							{currentTick} / {totalTicks}
+						</span>
+						<input
+							type="range"
+							min={0}
+							max={totalTicks}
+							value={currentTick}
+							onChange={handleSeek}
+							style={{ flexGrow: 1, minWidth: 80 }}
+						/>
+					</div>
+				)}
+			</div>
+
+			<canvas
+				ref={canvasRef}
+				style={{
+					border: "1px solid #e0e0e0",
+					borderRadius: 8,
+					background: "#111118",
+					display: "block",
+					maxWidth: "100%",
+				}}
+			/>
+			{hasFrames && (
+				<>
+					<RobotStatusPanel />
+					{battleLog.length > 0 && (
+						<pre
+							style={{
+								padding: 8,
+								background: "#f8f8f8",
+								border: "1px solid #e0e0e0",
+								borderRadius: 4,
+								color: "#444",
+								fontSize: 11,
+								lineHeight: 1.5,
+								maxHeight: 120,
+								overflowY: "auto",
+								whiteSpace: "pre-wrap",
+								margin: 0,
+							}}
+						>
+							{battleLog.join("\n")}
+						</pre>
+					)}
+				</>
 			)}
 		</div>
 	)

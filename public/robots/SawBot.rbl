@@ -1,98 +1,108 @@
 robot "SawBot"
 
-// SawBot: Heads to the center of the arena, then picks a random axis
-// and oscillates back and forth along it while scanning.
+// SawBot: picks a point on a circle around the arena center,
+// then oscillates along the tangent to the circle at that point.
+// Radar sweeps continuously; on scan, briefly reverses to re-acquire.
 //
-// Debug values: phase | spd
+// Debug values: phase | spd | bearingToTarget | dist
 
+var targetX float = 0.0
+var targetY float = 0.0
 var axis angle = angle(0)
 var spd float = 60.0
-var tickCount int = 0
-var legTicks int = 120
 var phase int = 0
-var targetX float = arenaWidth() * 0.5 + float(random(10))
-var targetY float = arenaHeight() * 0.5 + float(random(10))
 var turnRate float = 6.0
 var scanBackRate float = -(turnRate / 3.0)
 var scanBackTicks float = 15.0
 var scanBackCounter float = 0.0
 
+// Pick a random point on a circle around the arena center.
+// Sets targetX, targetY, and axis (tangent to the circle).
+func pickTarget() {
+	cx := arenaWidth() * 0.5
+	cy := arenaHeight() * 0.5
+	theta := angle(random(360))
+	radius := arenaWidth() * 0.2 + randomFloat() * 60.0
+	targetX = cx + cos(theta) * radius
+	targetY = cy + sin(theta) * radius
+	// Radius heading is theta+90; tangent is perpendicular to that
+	axis = theta
+}
 
 func init() {
 	setColor(200, 80, 40)
 	setGunColor(120, 120, 120)
 	setRadarColor(255, 200, 0)
-
-	legTicks = 100
-	axis = angle(random(360))
+	pickTarget()
 }
 
 func tick() {
-    bearingToTarget := bearingTo(targetX, targetY)
-    dist := distanceTo(targetX, targetY)
+	bearingToTarget := bearingTo(targetX, targetY)
+	dist := distanceTo(targetX, targetY)
 
 	if phase == 0 {
-		// Head to center — bearingTo is relative, convert to absolute for setHeading
+		// Head to target point
 		setHeading(getHeading() + bearingToTarget)
 		spd = 60.0
-
 		if dist < 30.0 {
-			// Arrived at center — switch to oscillation
 			phase = 1
 		}
 	}
 
 	if phase == 1 {
-        setHeading(axis)
+		// Oscillate along tangent axis
+		setHeading(axis)
 		if dist > 25.0 {
-			// bearingTo is relative to heading (≈axis). Near 0 = ahead, ±180 = behind.
-            if abs(float(bearingToTarget)) < 90.0 {
-              spd = 60.0
-            } else {
-              spd = -60.0
-            }
+			if abs(float(bearingToTarget)) < 90.0 {
+				spd = 60.0
+			} else {
+				spd = -60.0
+			}
 		}
 	}
 
 	setSpeed(spd)
-    // Wait one tick to scan back
-    if scanBackCounter > 0.0 && scanBackCounter != scanBackTicks {
-      setRadarTurnRate(scanBackRate)
-      setGunHeading(getRadarHeading() + angle(scanBackRate))
-    } else {
-      setRadarTurnRate(turnRate)
-      setGunHeading(getRadarHeading() + angle(turnRate))
-    }
 
-	// Emit debug values: phase, spd
+	// Radar sweep with scanback: briefly reverse on detection
+	if scanBackCounter > 0.0 && scanBackCounter != scanBackTicks {
+		setRadarTurnRate(scanBackRate)
+		setGunHeading(getRadarHeading() + angle(scanBackRate))
+	} else {
+		setRadarTurnRate(turnRate)
+		setGunHeading(getRadarHeading() + angle(turnRate))
+	}
+
 	debugInt(phase)
 	debugFloat(spd)
-    debugAngle(bearingToTarget)
-    debugAngle(bearingToTarget - axis)
-    debugFloat(dist)
+	debugAngle(bearingToTarget)
+	debugFloat(dist)
 }
 
 on wallHit(bearing angle) {
 	if phase == 0 {
-		// Shouldn't hit a wall going to center, but handle it
 		phase = 1
 		setHeading(axis)
 		spd = 50.0
 	} else {
 		spd = spd * -1.0
-		tickCount = 0
 	}
 }
 
 on scan(distTo float, bearing angle) {
-    if scanBackCounter == 0.0 {
-      scanBackCounter = scanBackTicks
-    } else {
-      scanBackCounter -= 1.0
-    }
+	if scanBackCounter == 0.0 {
+		scanBackCounter = scanBackTicks
+	} else {
+		scanBackCounter -= 1.0
+	}
 
-    gunRadarDiff := getGunHeading() - getRadarHeading()
-    if (getGunHeat() == 0.0 && gunRadarDiff < angle(5.0)) {
-      fire(4.0)
-    }
+	gunRadarDiff := getGunHeading() - getRadarHeading()
+	if getGunHeat() == 0.0 && gunRadarDiff < angle(5.0) {
+		fire(4.0)
+	}
+}
+
+on hit(damage float, bearing angle) {
+	// Pick a new target when hit
+	pickTarget()
+	phase = 0
 }

@@ -141,6 +141,53 @@ export function RobotStatusPanel() {
 							</div>
 							<div
 								style={{
+									display: "flex",
+									alignItems: "center",
+									gap: 4,
+									marginTop: 2,
+								}}
+							>
+								<div
+									style={{
+										flex: 1,
+										height: 3,
+										background: "#e0e0e0",
+										borderRadius: 2,
+										overflow: "hidden",
+									}}
+									title={`Gun heat: ${robot.gunHeat.toFixed(2)}`}
+								>
+									<div
+										style={{
+											width: `${Math.min(100, robot.gunHeat * 100)}%`,
+											height: "100%",
+											background: robot.gunHeat > 0 ? "#ef4444" : "#e0e0e0",
+											borderRadius: 2,
+										}}
+									/>
+								</div>
+								<div
+									style={{
+										flex: 1,
+										height: 3,
+										background: "#e0e0e0",
+										borderRadius: 2,
+										overflow: "hidden",
+									}}
+									title={`Speed: ${Math.abs(robot.speed).toFixed(1)}`}
+								>
+									<div
+										style={{
+											width: `${Math.abs(robot.speed)}%`,
+											height: "100%",
+											background: "#3b82f6",
+											borderRadius: 2,
+										}}
+									/>
+								</div>
+							</div>
+							<div
+								style={{
 									fontSize: 10,
 									color: "#888",
 									fontFamily: "'SF Mono', 'Fira Code', Menlo, Consolas, monospace",

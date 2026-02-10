@@ -11,10 +11,8 @@ import { createDefaultConfig } from "../defaults"
 import { createIdleBot, createStationaryShooterBot } from "../test-stubs"
 
 /**
- * Helper: creates a config where gun starts cool (gunHeat starts at 0 by
- * setting initial gun heat to 0 via enough ticks, or we can use a custom
- * bot that waits). For simplicity, we use a large arena and run enough ticks
- * for gunHeat to cool down from the default 3.0 at rate 0.1/tick = 30 ticks.
+ * Helper: creates a config with sensible defaults for bullet tests.
+ * Gun heat starts at 0, so robots can fire immediately.
  */
 function configWithDefaults(overrides?: Partial<GameConfig>): GameConfig {
 	return createDefaultConfig(
@@ -128,33 +126,15 @@ describe("Bullet Firing and Physics", () => {
 		const config = configWithDefaults()
 		const battle = createBattle(config, [createStationaryShooterBot(), createIdleBot()])
 
-		// Record energy just before the bullet fires
-		let energyBeforeFire: number | undefined
-		let energyAfterFire: number | undefined
+		// Gun heat starts at 0, so robot fires on tick 1
+		const found = advanceUntilBulletFired(battle, 5)
+		expect(found).toBeDefined()
 
-		for (let i = 0; i < 100; i++) {
-			const result = battle.tick()
-			const firedEvent = result.state.events.find(
-				(e): e is BulletFiredEvent => e.type === "bullet_fired",
-			)
-			if (firedEvent) {
-				energyAfterFire = result.state.robots[0]!.energy
-				break
-			}
-			energyBeforeFire = result.state.robots[0]!.energy
-		}
+		const energyAfterFire = found!.result.state.robots[0]!.energy
 
-		expect(energyBeforeFire).toBeDefined()
-		expect(energyAfterFire).toBeDefined()
-
-		// Energy cost = power * fireCostFactor = 3 * 1.0 = 3
-		// Energy regen also applies each tick (0.1), but if energy is already at max (100),
-		// regen has no effect. In that case the diff is exactly -3.
-		// If energy is below max, the diff is -3 + 0.1 = -2.9.
-		const diff = energyAfterFire! - energyBeforeFire!
-		// The cost portion should be exactly 3.0 (regen may offset by up to 0.1)
-		expect(diff).toBeGreaterThanOrEqual(-3)
-		expect(diff).toBeLessThanOrEqual(-3 + config.physics.energyRegenRate + 0.001)
+		// Energy starts at 100 (startEnergy). Fire cost = power * fireCostFactor = 3 * 1.0 = 3
+		// Energy regen (0.1) also applies but energy starts at max so no regen on first tick.
+		expect(energyAfterFire).toBeCloseTo(config.physics.startEnergy - 3, 1)
 
 		battle.destroy()
 	})
@@ -334,20 +314,23 @@ describe("Bullet Firing and Physics", () => {
 		const config = configWithDefaults()
 		const battle = createBattle(config, [createStationaryShooterBot(), createIdleBot()])
 
-		// On tick 1, gunHeat starts at 3.0 so no bullet should be created
-		const result1 = battle.tick()
-		const firedEvents1 = result1.state.events.filter(
-			(e): e is BulletFiredEvent => e.type === "bullet_fired",
-		)
-		expect(firedEvents1.length).toBe(0)
-		expect(result1.state.bullets.length).toBe(0)
+		// Gun heat starts at 0, so the first fire attempt succeeds (tick 1)
+		const found = advanceUntilBulletFired(battle, 5)
+		expect(found).toBeDefined()
 
-		// Gun heat = 3.0 - 0.1 = 2.9 after tick 1 (still hot)
+		// After firing, gunHeat = 1 + 3/5 = 1.6, so next tick should NOT fire
 		const result2 = battle.tick()
 		const firedEvents2 = result2.state.events.filter(
 			(e): e is BulletFiredEvent => e.type === "bullet_fired",
 		)
 		expect(firedEvents2.length).toBe(0)
+
+		// Still hot on the next tick too
+		const result3 = battle.tick()
+		const firedEvents3 = result3.state.events.filter(
+			(e): e is BulletFiredEvent => e.type === "bullet_fired",
+		)
+		expect(firedEvents3.length).toBe(0)
 
 		battle.destroy()
 	})

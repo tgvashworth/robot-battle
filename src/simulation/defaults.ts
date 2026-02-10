@@ -8,13 +8,13 @@ import type {
 
 export const DEFAULT_ARENA: ArenaConfig = {
 	width: 800,
-	height: 600,
+	height: 800,
 }
 
 export const DEFAULT_PHYSICS: PhysicsConfig = {
 	maxSpeed: 100,
-	acceleration: 1.0,
-	deceleration: 2.0,
+	acceleration: 5.0,
+	deceleration: 5.0,
 	maxTurnRate: 10,
 	turnRateSpeedFactor: 0.05,
 	maxGunTurnRate: 20,

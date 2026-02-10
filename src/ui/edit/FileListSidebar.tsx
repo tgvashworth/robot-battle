@@ -6,6 +6,9 @@ export function FileListSidebar() {
 	const setActiveFile = useRobotFileStore((s) => s.setActiveFile)
 	const createFile = useRobotFileStore((s) => s.createFile)
 	const deleteFile = useRobotFileStore((s) => s.deleteFile)
+	const isDirty = useRobotFileStore((s) => s.isDirty)
+	const reloadFromDisk = useRobotFileStore((s) => s.reloadFromDisk)
+	const reloadAllFromDisk = useRobotFileStore((s) => s.reloadAllFromDisk)
 
 	const handleNewRobot = () => {
 		const name = `Robot${files.length + 1}.rbl`
@@ -68,6 +71,7 @@ export function FileListSidebar() {
 			>
 				{files.map((file) => {
 					const isActive = file.id === activeFileId
+					const dirty = isDirty(file.id)
 					return (
 						<li
 							key={file.id}
@@ -100,6 +104,29 @@ export function FileListSidebar() {
 							>
 								{file.filename}
 							</button>
+							{dirty && (
+								<button
+									type="button"
+									aria-label={`Reload ${file.filename} from disk`}
+									title="Modified — reload from disk"
+									onClick={(e) => {
+										e.stopPropagation()
+										reloadFromDisk(file.id)
+									}}
+									style={{
+										background: "none",
+										border: "none",
+										cursor: "pointer",
+										padding: "0 2px",
+										fontSize: 11,
+										lineHeight: 1,
+										color: "#ca8a04",
+										flexShrink: 0,
+									}}
+								>
+									&#x21bb;
+								</button>
+							)}
 							<button
 								type="button"
 								aria-label={`Delete ${file.filename}`}
@@ -124,6 +151,21 @@ export function FileListSidebar() {
 					)
 				})}
 			</ul>
+			<button
+				type="button"
+				onClick={() => reloadAllFromDisk()}
+				style={{
+					fontSize: 11,
+					color: "#888",
+					background: "none",
+					border: "none",
+					cursor: "pointer",
+					padding: "4px 8px",
+					textAlign: "left",
+				}}
+			>
+				&#x21bb; Reload all from disk
+			</button>
 		</div>
 	)
 }

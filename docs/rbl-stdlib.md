@@ -179,8 +179,8 @@ The `debug()` overload automatically routes to the correct function based on arg
 | Parameter             | Default | Notes                                    |
 |-----------------------|---------|------------------------------------------|
 | Max speed             | 100     | Units per second. Negative = reverse.    |
-| Acceleration          | 1.0     | Per tick.                                |
-| Deceleration          | 2.0     | Per tick.                                |
+| Acceleration          | 5.0     | Per tick.                                |
+| Deceleration          | 5.0     | Per tick.                                |
 | Max body turn rate    | 10      | Degrees per tick.                        |
 | Max gun turn rate     | 20      | Degrees per tick.                        |
 | Max radar turn rate   | 45      | Degrees per tick.                        |
@@ -193,7 +193,7 @@ The `debug()` overload automatically routes to the correct function based on arg
 | Gun cooldown rate     | 0.1     | Per tick.                                |
 | Wall damage           | `speed * 0.1` | Speed zeroed on impact.            |
 | Ram damage            | `0.5 + speed * 0.02` | Only on initial contact.      |
-| Arena size            | 800 x 600 |                                       |
+| Arena size            | 800 x 800 |                                       |
 
 ## Coordinate System
 
