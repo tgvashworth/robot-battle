@@ -1910,4 +1910,356 @@ func tick() {
 			expect(() => tick()).toThrow()
 		})
 	})
+
+	describe("arrays of structs", () => {
+		it("declares array of structs, writes and reads fields", async () => {
+			const source = `${R}
+type Point struct {
+  x int
+  y int
+}
+var arr [3]Point
+func tick() {
+  arr[0].x = 10
+  arr[0].y = 20
+  arr[1].x = 30
+  arr[1].y = 40
+  arr[2].x = 50
+  arr[2].y = 60
+  debug(arr[0].x)
+  debug(arr[0].y)
+  debug(arr[1].x)
+  debug(arr[1].y)
+  debug(arr[2].x)
+  debug(arr[2].y)
+}`
+			const { wasm } = compile(source)
+			const { instance, calls } = await instantiate(wasm)
+			const tick = instance.exports.tick as () => void
+			tick()
+			const debugCalls = calls.filter((c) => c.name === "debugInt")
+			expect(debugCalls.length).toBe(6)
+			expect(debugCalls[0]!.args[0]).toBe(10)
+			expect(debugCalls[1]!.args[0]).toBe(20)
+			expect(debugCalls[2]!.args[0]).toBe(30)
+			expect(debugCalls[3]!.args[0]).toBe(40)
+			expect(debugCalls[4]!.args[0]).toBe(50)
+			expect(debugCalls[5]!.args[0]).toBe(60)
+		})
+
+		it("indexes array of structs with variable index and accesses field", async () => {
+			const source = `${R}
+type Point struct {
+  x int
+  y int
+}
+var arr [3]Point
+func tick() {
+  arr[0].x = 100
+  arr[1].x = 200
+  arr[2].x = 300
+  i := 1
+  debug(arr[i].x)
+}`
+			const { wasm } = compile(source)
+			const { instance, calls } = await instantiate(wasm)
+			const tick = instance.exports.tick as () => void
+			tick()
+			const debugCalls = calls.filter((c) => c.name === "debugInt")
+			expect(debugCalls.length).toBe(1)
+			expect(debugCalls[0]!.args[0]).toBe(200)
+		})
+
+		it("writes to a specific field of an array element via variable index", async () => {
+			const source = `${R}
+type Point struct {
+  x int
+  y int
+}
+var arr [3]Point
+func tick() {
+  i := 2
+  arr[i].x = 999
+  arr[i].y = 888
+  debug(arr[2].x)
+  debug(arr[2].y)
+}`
+			const { wasm } = compile(source)
+			const { instance, calls } = await instantiate(wasm)
+			const tick = instance.exports.tick as () => void
+			tick()
+			const debugCalls = calls.filter((c) => c.name === "debugInt")
+			expect(debugCalls.length).toBe(2)
+			expect(debugCalls[0]!.args[0]).toBe(999)
+			expect(debugCalls[1]!.args[0]).toBe(888)
+		})
+
+		it("iterates over array of structs in a for loop", async () => {
+			const source = `${R}
+type Point struct {
+  x int
+  y int
+}
+var arr [3]Point
+func tick() {
+  arr[0].x = 1
+  arr[0].y = 2
+  arr[1].x = 3
+  arr[1].y = 4
+  arr[2].x = 5
+  arr[2].y = 6
+  sum := 0
+  for i := 0; i < 3; i += 1 {
+    sum = sum + arr[i].x + arr[i].y
+  }
+  debug(sum)
+}`
+			const { wasm } = compile(source)
+			const { instance, calls } = await instantiate(wasm)
+			const tick = instance.exports.tick as () => void
+			tick()
+			const debugCalls = calls.filter((c) => c.name === "debugInt")
+			expect(debugCalls.length).toBe(1)
+			expect(debugCalls[0]!.args[0]).toBe(21)
+		})
+
+		it("array of structs with mixed field types", async () => {
+			const source = `${R}
+type Entity struct {
+  id int
+  value float
+}
+var entities [2]Entity
+func tick() {
+  entities[0].id = 1
+  entities[0].value = 3.14
+  entities[1].id = 2
+  entities[1].value = 2.71
+  debug(entities[0].id)
+  debug(entities[0].value)
+  debug(entities[1].id)
+  debug(entities[1].value)
+}`
+			const { wasm } = compile(source)
+			const { instance, calls } = await instantiate(wasm)
+			const tick = instance.exports.tick as () => void
+			tick()
+			const debugIntCalls = calls.filter((c) => c.name === "debugInt")
+			const debugFloatCalls = calls.filter((c) => c.name === "debugFloat")
+			expect(debugIntCalls.length).toBe(2)
+			expect(debugIntCalls[0]!.args[0]).toBe(1)
+			expect(debugIntCalls[1]!.args[0]).toBe(2)
+			expect(debugFloatCalls.length).toBe(2)
+			expect(debugFloatCalls[0]!.args[0]).toBeCloseTo(3.14)
+			expect(debugFloatCalls[1]!.args[0]).toBeCloseTo(2.71)
+		})
+	})
+
+	describe("nested structs", () => {
+		it("accesses nested struct field: outer.inner.x", async () => {
+			const source = `${R}
+type Inner struct {
+  x int
+  y int
+}
+type Outer struct {
+  inner Inner
+  z int
+}
+var o Outer
+func tick() {
+  o.inner.x = 42
+  o.inner.y = 84
+  o.z = 100
+  debug(o.inner.x)
+  debug(o.inner.y)
+  debug(o.z)
+}`
+			const { wasm } = compile(source)
+			const { instance, calls } = await instantiate(wasm)
+			const tick = instance.exports.tick as () => void
+			tick()
+			const debugCalls = calls.filter((c) => c.name === "debugInt")
+			expect(debugCalls.length).toBe(3)
+			expect(debugCalls[0]!.args[0]).toBe(42)
+			expect(debugCalls[1]!.args[0]).toBe(84)
+			expect(debugCalls[2]!.args[0]).toBe(100)
+		})
+
+		it("writes to nested struct field: outer.inner.x = 42", async () => {
+			const source = `${R}
+type Inner struct {
+  x int
+  y int
+}
+type Outer struct {
+  inner Inner
+  z int
+}
+var o Outer
+func tick() {
+  o.z = 1
+  o.inner.x = 2
+  o.inner.y = 3
+  debug(o.z)
+  debug(o.inner.x)
+  debug(o.inner.y)
+}`
+			const { wasm } = compile(source)
+			const { instance, calls } = await instantiate(wasm)
+			const tick = instance.exports.tick as () => void
+			tick()
+			const debugCalls = calls.filter((c) => c.name === "debugInt")
+			expect(debugCalls.length).toBe(3)
+			expect(debugCalls[0]!.args[0]).toBe(1)
+			expect(debugCalls[1]!.args[0]).toBe(2)
+			expect(debugCalls[2]!.args[0]).toBe(3)
+		})
+
+		it("initializes nested struct with struct literal", async () => {
+			const source = `${R}
+type Inner struct {
+  x int
+  y int
+}
+type Outer struct {
+  inner Inner
+  z int
+}
+var o Outer = Outer{ inner: Inner{ x: 1, y: 2 }, z: 3 }
+func tick() {
+  debug(o.inner.x)
+  debug(o.inner.y)
+  debug(o.z)
+}`
+			const { wasm } = compile(source)
+			const { instance, calls } = await instantiate(wasm)
+			const init = instance.exports.init as () => void
+			init()
+			const tick = instance.exports.tick as () => void
+			tick()
+			const debugCalls = calls.filter((c) => c.name === "debugInt")
+			expect(debugCalls.length).toBe(3)
+			expect(debugCalls[0]!.args[0]).toBe(1)
+			expect(debugCalls[1]!.args[0]).toBe(2)
+			expect(debugCalls[2]!.args[0]).toBe(3)
+		})
+
+		it("local nested struct with struct literal", async () => {
+			const source = `${R}
+type Inner struct {
+  x int
+  y int
+}
+type Outer struct {
+  inner Inner
+  z int
+}
+func tick() {
+  o := Outer{ inner: Inner{ x: 10, y: 20 }, z: 30 }
+  debug(o.inner.x)
+  debug(o.inner.y)
+  debug(o.z)
+}`
+			const { wasm } = compile(source)
+			const { instance, calls } = await instantiate(wasm)
+			const tick = instance.exports.tick as () => void
+			tick()
+			const debugCalls = calls.filter((c) => c.name === "debugInt")
+			expect(debugCalls.length).toBe(3)
+			expect(debugCalls[0]!.args[0]).toBe(10)
+			expect(debugCalls[1]!.args[0]).toBe(20)
+			expect(debugCalls[2]!.args[0]).toBe(30)
+		})
+	})
+
+	describe("multi-return functions", () => {
+		it("basic multi-return: swap two values", async () => {
+			const source = `${R}
+func swap(a int, b int) (int, int) {
+  return b, a
+}
+func tick() {
+  x, y := swap(1, 2)
+  debug(x)
+  debug(y)
+}`
+			const { wasm } = compile(source)
+			const { instance, calls } = await instantiate(wasm)
+			const tick = instance.exports.tick as () => void
+			tick()
+			const debugCalls = calls.filter((c) => c.name === "debugInt")
+			expect(debugCalls.length).toBe(2)
+			expect(debugCalls[0]!.args[0]).toBe(2)
+			expect(debugCalls[1]!.args[0]).toBe(1)
+		})
+
+		it("multi-return: minmax function", async () => {
+			const source = `${R}
+func minmax(a int, b int) (int, int) {
+  if a < b {
+    return a, b
+  }
+  return b, a
+}
+func tick() {
+  lo, hi := minmax(7, 3)
+  debug(lo)
+  debug(hi)
+}`
+			const { wasm } = compile(source)
+			const { instance, calls } = await instantiate(wasm)
+			const tick = instance.exports.tick as () => void
+			tick()
+			const debugCalls = calls.filter((c) => c.name === "debugInt")
+			expect(debugCalls.length).toBe(2)
+			expect(debugCalls[0]!.args[0]).toBe(3)
+			expect(debugCalls[1]!.args[0]).toBe(7)
+		})
+
+		it("multi-return with mixed types: int and float", async () => {
+			const source = `${R}
+func split(x int) (int, float) {
+  half := x / 2
+  remainder := float(x) - float(half) * 2.0
+  return half, remainder
+}
+func tick() {
+  h, r := split(7)
+  debug(h)
+  debug(r)
+}`
+			const { wasm } = compile(source)
+			const { instance, calls } = await instantiate(wasm)
+			const tick = instance.exports.tick as () => void
+			tick()
+			const debugIntCalls = calls.filter((c) => c.name === "debugInt")
+			const debugFloatCalls = calls.filter((c) => c.name === "debugFloat")
+			expect(debugIntCalls.length).toBe(1)
+			expect(debugIntCalls[0]!.args[0]).toBe(3)
+			expect(debugFloatCalls.length).toBe(1)
+			expect(debugFloatCalls[0]!.args[0]).toBeCloseTo(1.0)
+		})
+
+		it("multi-return called multiple times", async () => {
+			const source = `${R}
+func swap(a int, b int) (int, int) {
+  return b, a
+}
+func tick() {
+  a, b := swap(10, 20)
+  c, d := swap(a, b)
+  debug(c)
+  debug(d)
+}`
+			const { wasm } = compile(source)
+			const { instance, calls } = await instantiate(wasm)
+			const tick = instance.exports.tick as () => void
+			tick()
+			const debugCalls = calls.filter((c) => c.name === "debugInt")
+			expect(debugCalls.length).toBe(2)
+			expect(debugCalls[0]!.args[0]).toBe(10)
+			expect(debugCalls[1]!.args[0]).toBe(20)
+		})
+	})
 })

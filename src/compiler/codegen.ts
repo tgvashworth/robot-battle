@@ -566,10 +566,15 @@ class WasmCodegen {
 	// --- Block / Statement compilation ---
 
 	private compileBlock(block: Block, ctx: CompilingFunc): number[] {
+		// Save the current locals snapshot so shadowed variables are restored
+		const savedLocals = new Map(ctx.locals)
 		const code: number[] = []
 		for (const stmt of block.stmts) {
 			code.push(...this.compileStmt(stmt, ctx))
 		}
+		// Restore the previous scope bindings (new local indices stay allocated
+		// but the name bindings revert to the outer scope's values)
+		ctx.locals = savedLocals
 		return code
 	}
 
@@ -653,18 +658,45 @@ class WasmCodegen {
 				}
 			}
 		} else if (stmt.values.length === 1 && stmt.names.length > 1) {
-			// Multi-return: for now, just handle as single value
-			// TODO: multi-return functions need return via memory
+			// Multi-return destructuring: a, b := f()
 			const expr = stmt.values[0]!
-			code.push(...this.compileExpr(expr, ctx))
-			// The first return value is on the stack; assign to first name
-			const exprInfo = this.analysis.exprTypes.get(expr)
-			const type = exprInfo?.type ?? INT
-			const localIndex = this.allocLocal(ctx, stmt.names[0]!, type)
-			code.push(OP_LOCAL_SET, ...unsignedLEB128(localIndex))
-			// Remaining names get default values
-			for (let i = 1; i < stmt.names.length; i++) {
-				this.allocLocal(ctx, stmt.names[i]!, INT)
+			if (expr.kind === "CallExpr") {
+				const funcInfo = this.analysis.funcs.get(expr.callee)
+				if (funcInfo && funcInfo.returnTypes.length === stmt.names.length) {
+					// Allocate locals for all return values first
+					const localIndices: number[] = []
+					for (let i = 0; i < stmt.names.length; i++) {
+						const retType = funcInfo.returnTypes[i]!
+						const localIndex = this.allocLocal(ctx, stmt.names[i]!, retType)
+						localIndices.push(localIndex)
+					}
+					// Compile the call — pushes all return values on the stack
+					code.push(...this.compileExpr(expr, ctx))
+					// Pop from stack in reverse order (last return value is on top)
+					for (let i = stmt.names.length - 1; i >= 0; i--) {
+						code.push(OP_LOCAL_SET, ...unsignedLEB128(localIndices[i]!))
+					}
+				} else {
+					// Fallback: allocate locals with default values
+					code.push(...this.compileExpr(expr, ctx))
+					const exprInfo = this.analysis.exprTypes.get(expr)
+					const type = exprInfo?.type ?? INT
+					const localIndex = this.allocLocal(ctx, stmt.names[0]!, type)
+					code.push(OP_LOCAL_SET, ...unsignedLEB128(localIndex))
+					for (let i = 1; i < stmt.names.length; i++) {
+						this.allocLocal(ctx, stmt.names[i]!, INT)
+					}
+				}
+			} else {
+				// Non-call multi-value: just assign first value, default rest
+				code.push(...this.compileExpr(expr, ctx))
+				const exprInfo = this.analysis.exprTypes.get(expr)
+				const type = exprInfo?.type ?? INT
+				const localIndex = this.allocLocal(ctx, stmt.names[0]!, type)
+				code.push(OP_LOCAL_SET, ...unsignedLEB128(localIndex))
+				for (let i = 1; i < stmt.names.length; i++) {
+					this.allocLocal(ctx, stmt.names[i]!, INT)
+				}
 			}
 		}
 
@@ -943,8 +975,9 @@ class WasmCodegen {
 
 	private compileReturnStmt(stmt: { values: readonly Expr[] }, ctx: CompilingFunc): number[] {
 		const code: number[] = []
-		if (stmt.values.length > 0) {
-			code.push(...this.compileExpr(stmt.values[0]!, ctx))
+		// Push all return values onto the stack
+		for (const value of stmt.values) {
+			code.push(...this.compileExpr(value, ctx))
 		}
 		code.push(OP_RETURN)
 		return code
@@ -1818,38 +1851,78 @@ class WasmCodegen {
 		code.push(OP_I32_CONST, ...signedLEB128(baseAddr))
 		code.push(OP_LOCAL_SET, ...unsignedLEB128(addrLocal))
 
+		code.push(...this.compileCompositeInitFields(init, type, addrLocal, 0, ctx))
+
+		return code
+	}
+
+	/** Recursively initialize composite fields at a given offset from an address local */
+	private compileCompositeInitFields(
+		init: Expr,
+		type: RBLType,
+		addrLocal: number,
+		baseOffset: number,
+		ctx: CompilingFunc,
+	): number[] {
+		const code: number[] = []
+
 		if (init.kind === "StructLiteral" && type.kind === "struct") {
-			// Initialize each field
 			for (const fieldInit of init.fields) {
 				const field = type.fields.find((f) => f.name === fieldInit.name)
 				if (!field) continue
-				// addr + field.offset
-				code.push(OP_LOCAL_GET, ...unsignedLEB128(addrLocal))
-				if (field.offset > 0) {
-					code.push(OP_I32_CONST, ...signedLEB128(field.offset))
-					code.push(OP_I32_ADD)
-				}
-				code.push(...this.compileExpr(fieldInit.value, ctx))
-				if (isFloat(field.type)) {
-					code.push(OP_F32_STORE, 0x02, 0x00)
+				const fieldOffset = baseOffset + field.offset
+				// Recursively handle nested struct/array literals
+				if (
+					(field.type.kind === "struct" || field.type.kind === "array") &&
+					(fieldInit.value.kind === "StructLiteral" || fieldInit.value.kind === "ArrayLiteral")
+				) {
+					code.push(
+						...this.compileCompositeInitFields(
+							fieldInit.value,
+							field.type,
+							addrLocal,
+							fieldOffset,
+							ctx,
+						),
+					)
 				} else {
-					code.push(OP_I32_STORE, 0x02, 0x00)
+					code.push(OP_LOCAL_GET, ...unsignedLEB128(addrLocal))
+					if (fieldOffset > 0) {
+						code.push(OP_I32_CONST, ...signedLEB128(fieldOffset))
+						code.push(OP_I32_ADD)
+					}
+					code.push(...this.compileExpr(fieldInit.value, ctx))
+					if (isFloat(field.type)) {
+						code.push(OP_F32_STORE, 0x02, 0x00)
+					} else {
+						code.push(OP_I32_STORE, 0x02, 0x00)
+					}
 				}
 			}
 		} else if (init.kind === "ArrayLiteral" && type.kind === "array") {
 			const elemSize = typeSize(type.elementType)
 			for (let i = 0; i < init.elements.length; i++) {
-				const offset = i * elemSize
-				code.push(OP_LOCAL_GET, ...unsignedLEB128(addrLocal))
-				if (offset > 0) {
-					code.push(OP_I32_CONST, ...signedLEB128(offset))
-					code.push(OP_I32_ADD)
-				}
-				code.push(...this.compileExpr(init.elements[i]!, ctx))
-				if (isFloat(type.elementType)) {
-					code.push(OP_F32_STORE, 0x02, 0x00)
+				const elemOffset = baseOffset + i * elemSize
+				const elem = init.elements[i]!
+				if (
+					(type.elementType.kind === "struct" || type.elementType.kind === "array") &&
+					(elem.kind === "StructLiteral" || elem.kind === "ArrayLiteral")
+				) {
+					code.push(
+						...this.compileCompositeInitFields(elem, type.elementType, addrLocal, elemOffset, ctx),
+					)
 				} else {
-					code.push(OP_I32_STORE, 0x02, 0x00)
+					code.push(OP_LOCAL_GET, ...unsignedLEB128(addrLocal))
+					if (elemOffset > 0) {
+						code.push(OP_I32_CONST, ...signedLEB128(elemOffset))
+						code.push(OP_I32_ADD)
+					}
+					code.push(...this.compileExpr(elem, ctx))
+					if (isFloat(type.elementType)) {
+						code.push(OP_F32_STORE, 0x02, 0x00)
+					} else {
+						code.push(OP_I32_STORE, 0x02, 0x00)
+					}
 				}
 			}
 		}
@@ -1886,24 +1959,50 @@ class WasmCodegen {
 			for (const fieldInit of value.fields) {
 				const field = type.fields.find((f) => f.name === fieldInit.name)
 				if (!field) continue
-				code.push(OP_I32_CONST, ...signedLEB128(baseAddr + field.offset))
-				code.push(...this.compileExpr(fieldInit.value, ctx))
-				if (isFloat(field.type)) {
-					code.push(OP_F32_STORE, 0x02, 0x00)
+				// Recursively handle nested struct/array literals
+				if (
+					(field.type.kind === "struct" || field.type.kind === "array") &&
+					(fieldInit.value.kind === "StructLiteral" || fieldInit.value.kind === "ArrayLiteral")
+				) {
+					code.push(
+						...this.compileCompositeStoreToMemory(
+							fieldInit.value,
+							field.type,
+							baseAddr + field.offset,
+							ctx,
+						),
+					)
 				} else {
-					code.push(OP_I32_STORE, 0x02, 0x00)
+					code.push(OP_I32_CONST, ...signedLEB128(baseAddr + field.offset))
+					code.push(...this.compileExpr(fieldInit.value, ctx))
+					if (isFloat(field.type)) {
+						code.push(OP_F32_STORE, 0x02, 0x00)
+					} else {
+						code.push(OP_I32_STORE, 0x02, 0x00)
+					}
 				}
 			}
 		} else if (value.kind === "ArrayLiteral" && type.kind === "array") {
 			const elemSize = typeSize(type.elementType)
 			for (let i = 0; i < value.elements.length; i++) {
 				const offset = i * elemSize
-				code.push(OP_I32_CONST, ...signedLEB128(baseAddr + offset))
-				code.push(...this.compileExpr(value.elements[i]!, ctx))
-				if (isFloat(type.elementType)) {
-					code.push(OP_F32_STORE, 0x02, 0x00)
+				const elem = value.elements[i]!
+				// Recursively handle nested struct/array literal elements
+				if (
+					(type.elementType.kind === "struct" || type.elementType.kind === "array") &&
+					(elem.kind === "StructLiteral" || elem.kind === "ArrayLiteral")
+				) {
+					code.push(
+						...this.compileCompositeStoreToMemory(elem, type.elementType, baseAddr + offset, ctx),
+					)
 				} else {
-					code.push(OP_I32_STORE, 0x02, 0x00)
+					code.push(OP_I32_CONST, ...signedLEB128(baseAddr + offset))
+					code.push(...this.compileExpr(elem, ctx))
+					if (isFloat(type.elementType)) {
+						code.push(OP_F32_STORE, 0x02, 0x00)
+					} else {
+						code.push(OP_I32_STORE, 0x02, 0x00)
+					}
 				}
 			}
 		}
