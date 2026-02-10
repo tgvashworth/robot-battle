@@ -59,6 +59,8 @@ function createSmallArenaBattle(opts?: {
 				startHealth: opts?.targetHealth ?? 100,
 				gunCooldownRate: 10, // Very fast cooldown so gun is ready on tick 1
 				robotRadius: 18,
+				ramDamageBase: 0, // Disable ram damage for bullet-focused tests
+				ramDamageSpeedFactor: 0,
 				...opts?.physics,
 			},
 			spawns: {

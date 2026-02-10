@@ -60,6 +60,7 @@ function mockImports(): {
 		"randomFloat",
 		"debugInt",
 		"debugFloat",
+		"debugAngle",
 		"setColor",
 		"setGunColor",
 		"setRadarColor",
@@ -481,7 +482,7 @@ on scan(distance float, bearing angle) {
 			const { instance, calls } = await instantiate(wasm)
 			const onScan = instance.exports.on_scan as (distance: number, bearing: number) => void
 			onScan(150.0, 45.0)
-			const debugCalls = calls.filter((c) => c.name === "debugFloat")
+			const debugCalls = calls.filter((c) => c.name === "debugAngle")
 			expect(debugCalls.length).toBe(1)
 			expect(debugCalls[0]!.args[0]).toBeCloseTo(45.0)
 		})
@@ -511,7 +512,7 @@ on hit(damage float, bearing angle) {
 			const { instance, calls } = await instantiate(wasm)
 			const onHit = instance.exports.on_hit as (damage: number, bearing: number) => void
 			onHit(25.0, 180.0)
-			const debugCalls = calls.filter((c) => c.name === "debugFloat")
+			const debugCalls = calls.filter((c) => c.name === "debugAngle")
 			expect(debugCalls.length).toBe(1)
 			expect(debugCalls[0]!.args[0]).toBeCloseTo(180.0)
 		})
@@ -526,7 +527,7 @@ on wallHit(bearing angle) {
 			const { instance, calls } = await instantiate(wasm)
 			const onWallHit = instance.exports.on_wallHit as (bearing: number) => void
 			onWallHit(90.0)
-			const debugCalls = calls.filter((c) => c.name === "debugFloat")
+			const debugCalls = calls.filter((c) => c.name === "debugAngle")
 			expect(debugCalls.length).toBe(1)
 			expect(debugCalls[0]!.args[0]).toBeCloseTo(90.0)
 		})
@@ -571,7 +572,7 @@ on scanned(bearing angle) {
 			const { instance, calls } = await instantiate(wasm)
 			const onScanned = instance.exports.on_scanned as (bearing: number) => void
 			onScanned(270.0)
-			const debugCalls = calls.filter((c) => c.name === "debugFloat")
+			const debugCalls = calls.filter((c) => c.name === "debugAngle")
 			expect(debugCalls.length).toBe(1)
 			expect(debugCalls[0]!.args[0]).toBeCloseTo(270.0)
 		})
@@ -601,7 +602,7 @@ on robotHit(bearing angle) {
 			const { instance, calls } = await instantiate(wasm)
 			const onRobotHit = instance.exports.on_robotHit as (bearing: number) => void
 			onRobotHit(45.0)
-			const debugCalls = calls.filter((c) => c.name === "debugFloat")
+			const debugCalls = calls.filter((c) => c.name === "debugAngle")
 			expect(debugCalls.length).toBe(1)
 			expect(debugCalls[0]!.args[0]).toBeCloseTo(45.0)
 		})

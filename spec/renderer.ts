@@ -40,6 +40,9 @@ export interface BattleRenderer {
 	/** Update rendering options (grid, effects, etc.) */
 	setOptions(options: Partial<RenderOptions>): void
 
+	/** Clear all entity visuals and frame state without destroying the PixiJS app. */
+	reset(): void
+
 	/** Release all PixiJS resources. */
 	destroy(): void
 }

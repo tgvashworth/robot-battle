@@ -168,8 +168,8 @@ describe("onScan event delivery", () => {
 		const [distance, bearing] = scanner.spies.onScan.mock.calls[0]!
 		expect(distance).toBeGreaterThan(0)
 		expect(typeof bearing).toBe("number")
-		expect(bearing).toBeGreaterThanOrEqual(0)
-		expect(bearing).toBeLessThan(360)
+		expect(bearing).toBeGreaterThanOrEqual(-180)
+		expect(bearing).toBeLessThanOrEqual(180)
 
 		battle.destroy()
 	})
@@ -244,8 +244,8 @@ describe("onScanned event delivery", () => {
 
 		const [bearing] = target.spies.onScanned.mock.calls[0]!
 		expect(typeof bearing).toBe("number")
-		expect(bearing).toBeGreaterThanOrEqual(0)
-		expect(bearing).toBeLessThan(360)
+		expect(bearing).toBeGreaterThanOrEqual(-180)
+		expect(bearing).toBeLessThanOrEqual(180)
 
 		battle.destroy()
 	})
@@ -270,9 +270,9 @@ describe("onScanned event delivery", () => {
 				battle.tick()
 				expect(target.spies.onScanned).toHaveBeenCalled()
 				const [bearing] = target.spies.onScanned.mock.calls[0]!
-				// Bearing should be a valid angle
-				expect(bearing).toBeGreaterThanOrEqual(0)
-				expect(bearing).toBeLessThan(360)
+				// Bearing should be a valid relative angle
+				expect(bearing).toBeGreaterThanOrEqual(-180)
+				expect(bearing).toBeLessThanOrEqual(180)
 				break
 			}
 		}

@@ -92,6 +92,8 @@ export function createBattle(config: GameConfig, robots: RobotModule[]): Battle 
 	const allRoundResults: RoundResult[] = []
 	let bullets: InternalBullet[] = []
 	let nextBulletId = 0
+	// Track robot pairs currently in collision (only apply damage on initial contact)
+	const collidingPairs = new Set<string>()
 
 	// Initialize robots
 	const internalRobots: InternalRobot[] = robots.map((module, i) => {
@@ -372,6 +374,7 @@ export function createBattle(config: GameConfig, robots: RobotModule[]): Battle 
 		}
 
 		// Robot-robot collision detection (only when at least one is moving)
+		const currentlyColliding = new Set<string>()
 		for (let i = 0; i < internalRobots.length; i++) {
 			const a = internalRobots[i]!
 			if (!a.alive) continue
@@ -379,42 +382,78 @@ export function createBattle(config: GameConfig, robots: RobotModule[]): Battle 
 				const b = internalRobots[j]!
 				if (!b.alive) continue
 
-				// Skip collision if neither robot is moving
-				if (a.speed === 0 && b.speed === 0) continue
-
 				const dx = b.x - a.x
 				const dy = b.y - a.y
 				const dist = Math.sqrt(dx * dx + dy * dy)
 				const minDist = config.physics.robotRadius * 2
 
 				if (dist < minDist) {
-					// Calculate relative speed for damage
-					const relSpeed = Math.abs(a.speed) + Math.abs(b.speed)
-					const damage =
-						config.physics.ramDamageBase + config.physics.ramDamageSpeedFactor * relSpeed
+					const pairKey = `${a.id}:${b.id}`
+					currentlyColliding.add(pairKey)
+					const isNewCollision = !collidingPairs.has(pairKey)
 
-					// Apply damage to both
-					a.health = Math.max(0, a.health - damage)
-					a.damageReceived += damage
-					b.health = Math.max(0, b.health - damage)
-					b.damageReceived += damage
+					// Only apply damage on initial collision contact
+					if (isNewCollision) {
+						const relSpeed = Math.abs(a.speed) + Math.abs(b.speed)
+						const damage =
+							config.physics.ramDamageBase + config.physics.ramDamageSpeedFactor * relSpeed
 
-					// Calculate bearings (relative to each robot's heading)
-					const bearingAtoB = normalizeAngle((Math.atan2(dx, -dy) * 180) / Math.PI)
-					let relBearingA = bearingAtoB - a.heading
-					if (relBearingA > 180) relBearingA -= 360
-					if (relBearingA < -180) relBearingA += 360
+						a.health = Math.max(0, a.health - damage)
+						a.damageReceived += damage
+						b.health = Math.max(0, b.health - damage)
+						b.damageReceived += damage
 
-					const bearingBtoA = normalizeAngle((Math.atan2(-dx, dy) * 180) / Math.PI)
-					let relBearingB = bearingBtoA - b.heading
-					if (relBearingB > 180) relBearingB -= 360
-					if (relBearingB < -180) relBearingB += 360
+						// Calculate bearings (relative to each robot's heading)
+						const bearingAtoB = normalizeAngle((Math.atan2(dx, -dy) * 180) / Math.PI)
+						let relBearingA = bearingAtoB - a.heading
+						if (relBearingA > 180) relBearingA -= 360
+						if (relBearingA < -180) relBearingA += 360
 
-					// Queue onRobotHit callbacks
-					a.pendingRobotHitBearing = relBearingA
-					b.pendingRobotHitBearing = relBearingB
+						const bearingBtoA = normalizeAngle((Math.atan2(-dx, dy) * 180) / Math.PI)
+						let relBearingB = bearingBtoA - b.heading
+						if (relBearingB > 180) relBearingB -= 360
+						if (relBearingB < -180) relBearingB += 360
 
-					// Push robots apart
+						// Queue onRobotHit callbacks
+						a.pendingRobotHitBearing = relBearingA
+						b.pendingRobotHitBearing = relBearingB
+
+						// Emit collision event
+						const collisionEvent: RobotCollisionEvent = {
+							type: "robot_collision",
+							robotId1: a.id,
+							robotId2: b.id,
+							x: (a.x + b.x) / 2,
+							y: (a.y + b.y) / 2,
+							damage1: damage,
+							damage2: damage,
+						}
+						tickEvents.push(collisionEvent)
+
+						// Check deaths from collision
+						if (a.health <= 0 && a.alive) {
+							a.alive = false
+							const diedEvent: RobotDiedEvent = {
+								type: "robot_died",
+								robotId: a.id,
+								x: a.x,
+								y: a.y,
+							}
+							tickEvents.push(diedEvent)
+						}
+						if (b.health <= 0 && b.alive) {
+							b.alive = false
+							const diedEvent: RobotDiedEvent = {
+								type: "robot_died",
+								robotId: b.id,
+								x: b.x,
+								y: b.y,
+							}
+							tickEvents.push(diedEvent)
+						}
+					}
+
+					// Always push robots apart regardless of damage
 					if (dist > 0) {
 						const overlap = minDist - dist
 						const pushX = (dx / dist) * (overlap / 2)
@@ -424,42 +463,13 @@ export function createBattle(config: GameConfig, robots: RobotModule[]): Battle 
 						b.x += pushX
 						b.y += pushY
 					}
-
-					// Emit collision event
-					const collisionEvent: RobotCollisionEvent = {
-						type: "robot_collision",
-						robotId1: a.id,
-						robotId2: b.id,
-						x: (a.x + b.x) / 2,
-						y: (a.y + b.y) / 2,
-						damage1: damage,
-						damage2: damage,
-					}
-					tickEvents.push(collisionEvent)
-
-					// Check deaths from collision
-					if (a.health <= 0 && a.alive) {
-						a.alive = false
-						const diedEvent: RobotDiedEvent = {
-							type: "robot_died",
-							robotId: a.id,
-							x: a.x,
-							y: a.y,
-						}
-						tickEvents.push(diedEvent)
-					}
-					if (b.health <= 0 && b.alive) {
-						b.alive = false
-						const diedEvent: RobotDiedEvent = {
-							type: "robot_died",
-							robotId: b.id,
-							x: b.x,
-							y: b.y,
-						}
-						tickEvents.push(diedEvent)
-					}
 				}
 			}
+		}
+		// Update collision tracking: clear pairs no longer colliding
+		collidingPairs.clear()
+		for (const key of currentlyColliding) {
+			collidingPairs.add(key)
 		}
 
 		// Queue onRobotDeath for any robots that died this tick (from wall or collision)
@@ -510,13 +520,22 @@ export function createBattle(config: GameConfig, robots: RobotModule[]): Battle 
 					const dyBack = scanner.y - target.y
 					const bearingToScanner = normalizeAngle((Math.atan2(dxBack, -dyBack) * 180) / Math.PI)
 
+					// Convert to relative bearings
+					let scanBearingRel = bearingToTarget - scanner.heading
+					if (scanBearingRel > 180) scanBearingRel -= 360
+					if (scanBearingRel < -180) scanBearingRel += 360
+
+					let scannedBearingRel = bearingToScanner - target.heading
+					if (scannedBearingRel > 180) scannedBearingRel -= 360
+					if (scannedBearingRel < -180) scannedBearingRel += 360
+
 					// Queue callbacks for next tick delivery
 					scanner.pendingOnScan.push({
 						distance,
-						bearing: bearingToTarget,
+						bearing: scanBearingRel,
 					})
 					target.pendingOnScanned.push({
-						bearing: bearingToScanner,
+						bearing: scannedBearingRel,
 					})
 
 					// Emit scan_detection event
@@ -525,7 +544,7 @@ export function createBattle(config: GameConfig, robots: RobotModule[]): Battle 
 						scannerId: scanner.id,
 						targetId: target.id,
 						distance,
-						bearing: bearingToTarget,
+						bearing: scanBearingRel,
 						scanStartAngle: prevAngle,
 						scanEndAngle: currAngle,
 					}
@@ -535,7 +554,7 @@ export function createBattle(config: GameConfig, robots: RobotModule[]): Battle 
 					const scannedEvent: ScannedEvent = {
 						type: "scanned",
 						targetId: target.id,
-						bearing: bearingToScanner,
+						bearing: scannedBearingRel,
 					}
 					tickEvents.push(scannedEvent)
 				}
@@ -602,7 +621,9 @@ export function createBattle(config: GameConfig, robots: RobotModule[]): Battle 
 
 		// Check round end conditions
 		const aliveCount = internalRobots.filter((r) => r.alive).length
-		const isOver = aliveCount <= 1 || tick >= config.ticksPerRound
+		const totalRobots = internalRobots.length
+		const isOver =
+			aliveCount === 0 || (totalRobots > 1 && aliveCount <= 1) || tick >= config.ticksPerRound
 		if (isOver) {
 			roundOver = true
 		}
@@ -992,12 +1013,18 @@ function createRobotAPI(
 		arenaHeight: () => config.arena.height,
 		robotCount: () => config.robots.length,
 		distanceTo: (x, y) => Math.sqrt((robot.x - x) ** 2 + (robot.y - y) ** 2),
-		bearingTo: (x, y) =>
-			normalizeAngle((Math.atan2(y - robot.y, x - robot.x) * 180) / Math.PI + 90),
+		bearingTo: (x, y) => {
+			const absolute = normalizeAngle((Math.atan2(y - robot.y, x - robot.x) * 180) / Math.PI + 90)
+			let relative = absolute - robot.heading
+			if (relative > 180) relative -= 360
+			if (relative < -180) relative += 360
+			return relative
+		},
 		random: (max) => Math.floor(rng.nextFloat() * max),
 		randomFloat: () => rng.nextFloat(),
 		debugInt: () => {},
 		debugFloat: () => {},
+		debugAngle: () => {},
 		setColor: () => {},
 		setGunColor: () => {},
 		setRadarColor: () => {},

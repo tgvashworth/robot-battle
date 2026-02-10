@@ -6,7 +6,7 @@
  * is entirely opt-in.
  */
 
-export type DebugMessageType = "trap" | "debug_int" | "debug_float" | "api_call"
+export type DebugMessageType = "trap" | "debug_int" | "debug_float" | "debug_angle" | "api_call"
 
 export interface TrapMessage {
 	readonly type: "trap"
@@ -27,6 +27,12 @@ export interface DebugFloatMessage {
 	readonly value: number
 }
 
+export interface DebugAngleMessage {
+	readonly type: "debug_angle"
+	readonly tick: number
+	readonly value: number
+}
+
 export interface ApiCallMessage {
 	readonly type: "api_call"
 	readonly tick: number
@@ -35,11 +41,16 @@ export interface ApiCallMessage {
 	readonly result?: number
 }
 
-export type DebugMessage = TrapMessage | DebugIntMessage | DebugFloatMessage | ApiCallMessage
+export type DebugMessage =
+	| TrapMessage
+	| DebugIntMessage
+	| DebugFloatMessage
+	| DebugAngleMessage
+	| ApiCallMessage
 
 export interface RobotDebugLog {
 	trap(functionName: string, error: unknown): void
-	debug(type: "int" | "float", value: number): void
+	debug(type: "int" | "float" | "angle", value: number): void
 	apiCall(name: string, args: number[], result?: number): void
 	getMessages(): readonly DebugMessage[]
 }
@@ -63,9 +74,10 @@ export function createDebugLog(getTick: () => number): RobotDebugLog {
 			})
 		},
 
-		debug(debugType: "int" | "float", value: number) {
+		debug(debugType: "int" | "float" | "angle", value: number) {
+			const typeMap = { int: "debug_int", float: "debug_float", angle: "debug_angle" } as const
 			messages.push({
-				type: debugType === "int" ? "debug_int" : "debug_float",
+				type: typeMap[debugType],
 				tick: getTick(),
 				value,
 			})

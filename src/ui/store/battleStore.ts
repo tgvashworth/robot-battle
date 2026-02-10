@@ -8,6 +8,12 @@ export interface RosterEntry {
 	readonly fileId: string
 }
 
+export interface DebugEntry {
+	readonly tick: number
+	readonly type: "int" | "float" | "angle"
+	readonly value: number
+}
+
 export interface BattleState {
 	status: BattleStatus
 	speed: number
@@ -15,8 +21,10 @@ export interface BattleState {
 	totalTicks: number
 	battleLog: string[]
 	tickCount: number
+	seed: number
 	currentState: GameState | null
 	roster: RosterEntry[]
+	robotDebugLogs: Record<string, DebugEntry[]>
 	addToRoster: (fileId: string) => void
 	removeFromRoster: (id: string) => void
 	startBattle: () => void
@@ -27,7 +35,9 @@ export interface BattleState {
 	setTotalTicks: (total: number) => void
 	setBattleLog: (log: string[]) => void
 	setTickCount: (count: number) => void
+	setSeed: (seed: number) => void
 	setCurrentState: (state: GameState | null) => void
+	setRobotDebugLogs: (logs: Record<string, DebugEntry[]>) => void
 }
 
 export const useBattleStore = create<BattleState>((set) => ({
@@ -37,8 +47,10 @@ export const useBattleStore = create<BattleState>((set) => ({
 	totalTicks: 0,
 	battleLog: [],
 	tickCount: 2000,
+	seed: 12345,
 	currentState: null,
 	roster: [],
+	robotDebugLogs: {},
 
 	addToRoster: (fileId: string) => {
 		set((state) => ({
@@ -84,7 +96,15 @@ export const useBattleStore = create<BattleState>((set) => ({
 		set({ tickCount: count })
 	},
 
+	setSeed: (seed: number) => {
+		set({ seed })
+	},
+
 	setCurrentState: (currentState: GameState | null) => {
 		set({ currentState })
+	},
+
+	setRobotDebugLogs: (robotDebugLogs: Record<string, DebugEntry[]>) => {
+		set({ robotDebugLogs })
 	},
 }))

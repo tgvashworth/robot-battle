@@ -1318,8 +1318,12 @@ class WasmCodegen {
 			if (funcIdx !== undefined) {
 				code.push(OP_CALL, ...unsignedLEB128(funcIdx))
 			}
+		} else if (typeEq(argType, ANGLE)) {
+			const funcIdx = this.funcIndex.get("debugAngle")
+			if (funcIdx !== undefined) {
+				code.push(OP_CALL, ...unsignedLEB128(funcIdx))
+			}
 		} else {
-			// float or angle -> debugFloat
 			const funcIdx = this.funcIndex.get("debugFloat")
 			if (funcIdx !== undefined) {
 				code.push(OP_CALL, ...unsignedLEB128(funcIdx))

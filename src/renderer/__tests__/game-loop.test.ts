@@ -29,6 +29,7 @@ function mockRenderer(): BattleRenderer {
 		render: vi.fn(),
 		resize: vi.fn(),
 		setOptions: vi.fn(),
+		reset: vi.fn(),
 		destroy: vi.fn(),
 	}
 }

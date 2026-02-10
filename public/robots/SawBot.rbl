@@ -1,156 +1,98 @@
 robot "SawBot"
 
-// SawBot: Moves to center, then oscillates perpendicular to the enemy.
-// Radar sweeps continuously, briefly inverting on detection.
-// Gun aims independently at last known enemy bearing.
+// SawBot: Heads to the center of the arena, then picks a random axis
+// and oscillates back and forth along it while scanning.
+//
+// Debug values: phase | spd
 
-// --- State ---
+var axis angle = angle(0)
+var spd float = 60.0
+var tickCount int = 0
+var legTicks int = 120
+var phase int = 0
+var targetX float = arenaWidth() * 0.5 + float(random(10))
+var targetY float = arenaHeight() * 0.5 + float(random(10))
+var turnRate float = 6.0
+var scanBackRate float = -(turnRate / 3.0)
+var scanBackTicks float = 15.0
+var scanBackCounter float = 0.0
 
-var scanDir float = 1.0
-var invertCounter int = 0
-
-var sawDistance float = 0.0
-var repositioning int = 1
-var sawDir float = 1.0
-var prevX float = 0.0
-var prevY float = 0.0
-
-// Enemy tracking
-var lastEnemyBearing angle = angle(0)
-var hasTarget int = 0
-
-// --- Setup ---
 
 func init() {
 	setColor(200, 80, 40)
 	setGunColor(120, 120, 120)
 	setRadarColor(255, 200, 0)
-}
 
-// --- Main tick ---
+	legTicks = 100
+	axis = angle(random(360))
+}
 
 func tick() {
-	if repositioning == 1 {
-		moveToCenter()
-	} else {
-		doSeesaw()
+    bearingToTarget := bearingTo(targetX, targetY)
+    dist := distanceTo(targetX, targetY)
+
+	if phase == 0 {
+		// Head to center — bearingTo is relative, convert to absolute for setHeading
+		setHeading(getHeading() + bearingToTarget)
+		spd = 60.0
+
+		if dist < 30.0 {
+			// Arrived at center — switch to oscillation
+			phase = 1
+		}
 	}
 
-	doRadarScan()
-
-	// Aim gun at last known enemy position (independent of radar)
-	if hasTarget == 1 {
-		setGunHeading(lastEnemyBearing)
-	}
-}
-
-// --- Movement: head toward arena center ---
-
-func moveToCenter() {
-	cx := arenaWidth() / 2.0
-	cy := arenaHeight() / 2.0
-	dist := distanceTo(cx, cy)
-
-	if dist < 50.0 {
-		repositioning = 0
-		prevX = getX()
-		prevY = getY()
-		sawDistance = 0.0
-		setSpeed(60.0)
-		setHeading(angle(45))
-		return
+	if phase == 1 {
+        setHeading(axis)
+		if dist > 25.0 {
+			// bearingTo is relative to heading (≈axis). Near 0 = ahead, ±180 = behind.
+            if abs(float(bearingToTarget)) < 90.0 {
+              spd = 60.0
+            } else {
+              spd = -60.0
+            }
+		}
 	}
 
-	heading := bearingTo(cx, cy)
-	setHeading(heading)
-	setSpeed(80.0)
-}
+	setSpeed(spd)
+    // Wait one tick to scan back
+    if scanBackCounter > 0.0 && scanBackCounter != scanBackTicks {
+      setRadarTurnRate(scanBackRate)
+      setGunHeading(getRadarHeading() + angle(scanBackRate))
+    } else {
+      setRadarTurnRate(turnRate)
+      setGunHeading(getRadarHeading() + angle(turnRate))
+    }
 
-// --- Movement: oscillate perpendicular to enemy ---
-
-func doSeesaw() {
-	dx := getX() - prevX
-	dy := getY() - prevY
-	step := sqrt(dx * dx + dy * dy)
-	sawDistance = sawDistance + step
-	prevX = getX()
-	prevY = getY()
-
-	// Reverse after 1/6 of arena width (total oscillation = 1/3 of width)
-	maxDist := arenaWidth() / 6.0
-	if sawDistance > maxDist {
-		sawDir = sawDir * -1.0
-		sawDistance = 0.0
-	}
-
-	setSpeed(60.0 * sawDir)
-
-	// Move perpendicular to the enemy bearing
-	if hasTarget == 1 {
-		setHeading(lastEnemyBearing + angle(90))
-	} else {
-		setHeading(angle(45))
-	}
-}
-
-// --- Radar scanning ---
-
-func doRadarScan() {
-	if invertCounter > 0 {
-		invertCounter = invertCounter - 1
-		setRadarTurnRate(10.0 * scanDir * -1.0)
-	} else {
-		setRadarTurnRate(10.0 * scanDir)
-	}
-}
-
-// --- Fire power by distance ---
-
-func firePower(distance float) float {
-	if distance < 150.0 {
-		return 3.0
-	}
-	if distance < 400.0 {
-		return 2.0
-	}
-	return 1.0
-}
-
-// --- Events ---
-
-on scan(distance float, bearing angle) {
-	// Track enemy position
-	lastEnemyBearing = bearing
-	hasTarget = 1
-
-	// Aim and fire
-	setGunHeading(bearing)
-	if getGunHeat() == 0.0 {
-		power := firePower(distance)
-		fire(power)
-	}
-
-	// Briefly invert radar to re-sweep the detection
-	invertCounter = 4
-}
-
-on scanned(bearing angle) {
-	// Also update enemy bearing when we're scanned
-	lastEnemyBearing = bearing
-	hasTarget = 1
-	sawDistance = 0.0
-}
-
-on hit(damage float, bearing angle) {
-	// Reverse direction to dodge follow-up shots
-	sawDir = sawDir * -1.0
-	sawDistance = 0.0
-	setSpeed(80.0 * sawDir)
+	// Emit debug values: phase, spd
+	debugInt(phase)
+	debugFloat(spd)
+    debugAngle(bearingToTarget)
+    debugAngle(bearingToTarget - axis)
+    debugFloat(dist)
 }
 
 on wallHit(bearing angle) {
-	// Reverse direction on wall hit
-	sawDir = sawDir * -1.0
-	sawDistance = 0.0
-	setSpeed(60.0 * sawDir)
+	if phase == 0 {
+		// Shouldn't hit a wall going to center, but handle it
+		phase = 1
+		setHeading(axis)
+		spd = 50.0
+	} else {
+		spd = spd * -1.0
+		tickCount = 0
+	}
+}
+
+on scan(distTo float, bearing angle) {
+    if scanBackCounter == 0.0 {
+      scanBackCounter = scanBackTicks
+    } else {
+      scanBackCounter -= 1.0
+    }
+
+    gunRadarDiff := getGunHeading() - getRadarHeading()
+    if (getGunHeat() == 0.0 && gunRadarDiff < angle(5.0)) {
+      fire(4.0)
+    }
 }

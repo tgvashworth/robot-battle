@@ -107,6 +107,7 @@ const API_REGISTRY: readonly [string, readonly RBLType[], readonly RBLType[]][] 
 	["randomFloat", [], [FLOAT]],
 	["debugInt", [INT], []],
 	["debugFloat", [FLOAT], []],
+	["debugAngle", [ANGLE], []],
 	["setColor", [INT, INT, INT], []],
 	["setGunColor", [INT, INT, INT], []],
 	["setRadarColor", [INT, INT, INT], []],

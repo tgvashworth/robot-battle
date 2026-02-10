@@ -5,7 +5,7 @@ import { compile, createDebugLog, instantiate } from "../../compiler"
 import type { RobotDebugLog } from "../../compiler"
 import { createGameLoop, createRenderer, createReplaySource } from "../../renderer"
 import type { ReplayTickSource } from "../../renderer/replay-source"
-import { createBattle, createDefaultConfig, createSpinBot } from "../../simulation"
+import { createBattle, createDefaultConfig } from "../../simulation"
 import { useBattleStore } from "../store/battleStore"
 import { useRobotFileStore } from "../store/robotFileStore"
 import { RobotStatusPanel } from "./RobotStatusPanel"
@@ -25,7 +25,10 @@ export function BattleTab() {
 	const setStatus = useBattleStore((s) => s.setStatus)
 	const tickCount = useBattleStore((s) => s.tickCount)
 	const setTickCount = useBattleStore((s) => s.setTickCount)
+	const seed = useBattleStore((s) => s.seed)
+	const setSeed = useBattleStore((s) => s.setSeed)
 	const setCurrentState = useBattleStore((s) => s.setCurrentState)
+	const setRobotDebugLogs = useBattleStore((s) => s.setRobotDebugLogs)
 
 	const canvasRef = useRef<HTMLCanvasElement>(null)
 	const rendererRef = useRef<BattleRenderer | null>(null)
@@ -138,21 +141,14 @@ export function BattleTab() {
 			}
 		}
 
-		// Need at least 2 robots — fill with SpinBot stubs if needed
-		while (compiledRobots.length < 2) {
-			const idx = compiledRobots.length
-			compiledRobots.push({
-				name: `SpinBot${idx > 0 ? idx + 1 : ""}`,
-				color: COLORS[idx % COLORS.length]!,
-				module: createSpinBot(),
-				debugLog: createDebugLog(getSimTick),
-			})
-			compileLog.push("[fallback] Added SpinBot stub as opponent")
+		if (compiledRobots.length === 0) {
+			setBattleLog([...compileLog, "", "No robots compiled successfully."])
+			return
 		}
 
 		const config = createDefaultConfig(
 			compiledRobots.map((r) => ({ name: r.name, color: r.color })),
-			{ ticksPerRound: tickCount },
+			{ ticksPerRound: tickCount, masterSeed: seed },
 		)
 		const battle = createBattle(
 			config,
@@ -183,9 +179,14 @@ export function BattleTab() {
 			log.push(`  #${i + 1} ${robot.name} — health: ${robot.health.toFixed(0)}`)
 		}
 
-		// Append debug/trap messages from each robot
+		// Append debug/trap messages from each robot and build per-tick debug logs
 		const debugLines: string[] = []
+		const perRobotDebugLogs: Record<
+			string,
+			{ tick: number; type: "int" | "float" | "angle"; value: number }[]
+		> = {}
 		for (const robot of compiledRobots) {
+			const entries: { tick: number; type: "int" | "float" | "angle"; value: number }[] = []
 			const messages = robot.debugLog.getMessages()
 			for (const msg of messages) {
 				if (msg.type === "trap") {
@@ -194,10 +195,16 @@ export function BattleTab() {
 					)
 				} else if (msg.type === "debug_int") {
 					debugLines.push(`[${robot.name}] debug: ${msg.value} (tick ${msg.tick})`)
+					entries.push({ tick: msg.tick, type: "int", value: msg.value })
 				} else if (msg.type === "debug_float") {
 					debugLines.push(`[${robot.name}] debug: ${msg.value} (tick ${msg.tick})`)
+					entries.push({ tick: msg.tick, type: "float", value: msg.value })
+				} else if (msg.type === "debug_angle") {
+					debugLines.push(`[${robot.name}] debug: ${msg.value}° (tick ${msg.tick})`)
+					entries.push({ tick: msg.tick, type: "angle", value: msg.value })
 				}
 			}
+			perRobotDebugLogs[robot.name] = entries
 		}
 		if (debugLines.length > 0) {
 			log.push("")
@@ -205,20 +212,23 @@ export function BattleTab() {
 		}
 
 		setBattleLog(log)
+		setRobotDebugLogs(perRobotDebugLogs)
 
 		battle.destroy()
 
 		// Set up the renderer if canvas is available
 		if (!canvasRef.current) return
 
-		// Destroy previous renderer if one exists, create a fresh one
-		if (rendererRef.current) {
-			rendererRef.current.destroy()
+		// Reuse existing renderer if possible, otherwise create a new one
+		let renderer = rendererRef.current
+		if (renderer) {
+			renderer.reset()
+		} else {
+			renderer = createRenderer()
+			rendererRef.current = renderer
+			renderer.init(canvasRef.current, config.arena)
+			await renderer.ready
 		}
-		const renderer = createRenderer()
-		rendererRef.current = renderer
-		renderer.init(canvasRef.current, config.arena)
-		await renderer.ready
 		renderer.resize(config.arena.width, config.arena.height)
 
 		// Create replay source and game loop
@@ -249,6 +259,8 @@ export function BattleTab() {
 		files,
 		roster,
 		tickCount,
+		seed,
+		setRobotDebugLogs,
 	])
 
 	const handlePlayPause = useCallback(() => {
@@ -494,6 +506,37 @@ export function BattleTab() {
 							const val = Number(e.target.value)
 							if (val > 0) {
 								setTickCount(val)
+							}
+						}}
+						style={{
+							width: 80,
+							fontFamily: "'SF Mono', 'Fira Code', Menlo, Consolas, monospace",
+							fontSize: 13,
+							background: "#ffffff",
+							color: "#1a1a1a",
+							border: "1px solid #d0d0d0",
+							borderRadius: 6,
+							padding: "4px 8px",
+						}}
+					/>
+				</label>
+				<label
+					style={{
+						display: "flex",
+						alignItems: "center",
+						gap: 6,
+						color: "#666",
+						fontSize: 13,
+					}}
+				>
+					Seed:
+					<input
+						type="number"
+						value={seed}
+						onChange={(e) => {
+							const val = Number(e.target.value)
+							if (!Number.isNaN(val)) {
+								setSeed(val)
 							}
 						}}
 						style={{

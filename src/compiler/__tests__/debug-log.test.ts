@@ -44,6 +44,7 @@ function createMockApi(getTick: () => number): RobotAPI {
 		randomFloat: () => 0,
 		debugInt: () => {},
 		debugFloat: () => {},
+		debugAngle: () => {},
 		setColor: () => {},
 		setGunColor: () => {},
 		setRadarColor: () => {},

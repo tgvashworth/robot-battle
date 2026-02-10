@@ -113,6 +113,10 @@ export async function instantiate(
 				debugLog?.debug("float", v)
 				requireApi().debugFloat(v)
 			},
+			debugAngle: (v: number) => {
+				debugLog?.debug("angle", v)
+				requireApi().debugAngle(v)
+			},
 			setColor: (r: number, g: number, b: number) => requireApi().setColor(r, g, b),
 			setGunColor: (r: number, g: number, b: number) => requireApi().setGunColor(r, g, b),
 			setRadarColor: (r: number, g: number, b: number) => requireApi().setRadarColor(r, g, b),

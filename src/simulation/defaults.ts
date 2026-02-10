@@ -30,9 +30,9 @@ export const DEFAULT_PHYSICS: PhysicsConfig = {
 	bulletSpeedPowerFactor: 3,
 	bulletDamageBase: 4,
 	bulletDamageBonus: 2,
-	wallDamageSpeedFactor: 0.5,
-	ramDamageBase: 2,
-	ramDamageSpeedFactor: 0.1,
+	wallDamageSpeedFactor: 0.1,
+	ramDamageBase: 0.5,
+	ramDamageSpeedFactor: 0.02,
 	mineDamage: 30,
 	cookieHealth: 20,
 	startEnergy: 100,
@@ -41,7 +41,7 @@ export const DEFAULT_PHYSICS: PhysicsConfig = {
 	fireCostFactor: 1.0,
 	startHealth: 100,
 	maxHealth: 100,
-	robotRadius: 18,
+	robotRadius: 13,
 	bulletRadius: 3,
 	cookieRadius: 10,
 	mineRadius: 8,
@@ -53,8 +53,8 @@ export const DEFAULT_SPAWNS: SpawnConfig = {
 	mineMaxCount: 4,
 	cookieSpawnInterval: 150,
 	cookieMaxCount: 3,
-	minSpawnDistanceFromRobot: 60,
-	minRobotSpacing: 100,
+	minSpawnDistanceFromRobot: 40,
+	minRobotSpacing: 80,
 }
 
 export const DEFAULT_SCORING: ScoringConfig = {

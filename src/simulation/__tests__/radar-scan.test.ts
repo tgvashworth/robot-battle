@@ -185,8 +185,8 @@ describe("Radar Scanning", () => {
 		const [distance, bearing] = onScanSpy.mock.calls[0]!
 		expect(distance).toBeGreaterThan(0)
 		expect(typeof bearing).toBe("number")
-		expect(bearing).toBeGreaterThanOrEqual(0)
-		expect(bearing).toBeLessThan(360)
+		expect(bearing).toBeGreaterThanOrEqual(-180)
+		expect(bearing).toBeLessThanOrEqual(180)
 
 		battle.destroy()
 	})
@@ -229,8 +229,8 @@ describe("Radar Scanning", () => {
 
 		const [bearing] = onScannedSpy.mock.calls[0]!
 		expect(typeof bearing).toBe("number")
-		expect(bearing).toBeGreaterThanOrEqual(0)
-		expect(bearing).toBeLessThan(360)
+		expect(bearing).toBeGreaterThanOrEqual(-180)
+		expect(bearing).toBeLessThanOrEqual(180)
 
 		battle.destroy()
 	})
@@ -495,9 +495,9 @@ describe("Radar Scanning", () => {
 		expect(found).toBeDefined()
 
 		const { scanEvent } = found!
-		// Bearing should be a normalized angle in [0, 360)
-		expect(scanEvent.bearing).toBeGreaterThanOrEqual(0)
-		expect(scanEvent.bearing).toBeLessThan(360)
+		// Bearing should be a relative angle in [-180, 180]
+		expect(scanEvent.bearing).toBeGreaterThanOrEqual(-180)
+		expect(scanEvent.bearing).toBeLessThanOrEqual(180)
 
 		// Scan angles should also be normalized
 		expect(scanEvent.scanStartAngle).toBeGreaterThanOrEqual(0)

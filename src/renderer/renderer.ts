@@ -12,15 +12,16 @@ const DEFAULT_OPTIONS: RenderOptions = {
 	backgroundColor: 0x111118,
 }
 
-const ROBOT_RADIUS = 18
-const GUN_LENGTH = 25
+const ROBOT_WIDTH = 18
+const ROBOT_LENGTH = 26
+const GUN_LENGTH = 16
 const GUN_WIDTH = 2
 const RADAR_ARC_RADIUS = 150
 const BULLET_RADIUS = 3
-const HEALTH_BAR_WIDTH = 30
+const HEALTH_BAR_WIDTH = 24
 const HEALTH_BAR_HEIGHT = 3
-const HEALTH_BAR_OFFSET_Y = 22
-const NAME_OFFSET_Y = -26
+const HEALTH_BAR_OFFSET_Y = 17
+const NAME_OFFSET_Y = -19
 
 const DEG_TO_RAD = Math.PI / 180
 
@@ -140,14 +141,24 @@ export function createRenderer(): BattleRenderer {
 
 	function drawRobotBody(gfx: Graphics, color: number): void {
 		gfx.clear()
-		gfx.circle(0, 0, ROBOT_RADIUS)
+		const hw = ROBOT_WIDTH / 2
+		const hl = ROBOT_LENGTH / 2
+		// Draw body rectangle centered at origin, "front" pointing up (negative Y)
+		gfx.rect(-hw, -hl, ROBOT_WIDTH, ROBOT_LENGTH)
+		gfx.fill(color)
+		// Draw a lighter nose triangle to indicate front
+		gfx.moveTo(-hw, -hl)
+		gfx.lineTo(0, -hl - 4)
+		gfx.lineTo(hw, -hl)
+		gfx.closePath()
 		gfx.fill(color)
 	}
 
 	function drawGunTurret(gfx: Graphics): void {
 		gfx.clear()
+		// Gun extends in +X direction; headingToRad rotates it to correct orientation
 		gfx.moveTo(0, 0)
-		gfx.lineTo(GUN_LENGTH, 0)
+		gfx.lineTo(ROBOT_LENGTH / 2 + GUN_LENGTH, 0)
 		gfx.stroke({ width: GUN_WIDTH + 1, color: 0xaaccdd })
 	}
 
@@ -215,6 +226,7 @@ export function createRenderer(): BattleRenderer {
 		visual: RobotVisual,
 		x: number,
 		y: number,
+		heading: number,
 		gunHeading: number,
 		radarHeading: number,
 		scanWidth: number,
@@ -225,15 +237,19 @@ export function createRenderer(): BattleRenderer {
 		visual.container.y = y
 		visual.container.visible = alive
 
-		// Gun rotation (heading is in game degrees, convert to canvas radians)
-		visual.gun.rotation = headingToRad(gunHeading)
+		// Rotate the entire container by body heading
+		// Body is drawn with nose at -Y (up), game heading 0=north CW, PixiJS rotation CW
+		visual.container.rotation = heading * DEG_TO_RAD
 
-		// Radar rotation and scan width update
-		visual.radar.rotation = headingToRad(radarHeading)
+		// Gun rotation relative to body (container already rotated by body heading)
+		visual.gun.rotation = headingToRad(gunHeading - heading)
+
+		// Radar rotation relative to body
+		visual.radar.rotation = headingToRad(radarHeading - heading)
 		drawRadarArc(visual.radar, scanWidth)
 		visual.radar.visible = alive && options.showScanArcs
 
-		// Health bar position follows robot
+		// Health bar position follows robot (not rotated — lives on uiLayer)
 		visual.healthBarBg.x = x
 		visual.healthBarBg.y = y
 		visual.healthBarBg.visible = alive && options.showHealthBars
@@ -244,7 +260,7 @@ export function createRenderer(): BattleRenderer {
 			drawHealthBarFill(visual.healthBarFill, health)
 		}
 
-		// Name label follows robot
+		// Name label follows robot (not rotated)
 		visual.nameLabel.x = x
 		visual.nameLabel.y = y + NAME_OFFSET_Y
 		visual.nameLabel.visible = alive && options.showNames
@@ -254,11 +270,12 @@ export function createRenderer(): BattleRenderer {
 		prev: RobotState | undefined,
 		curr: RobotState,
 		alpha: number,
-	): { x: number; y: number; gunHeading: number; radarHeading: number } {
+	): { x: number; y: number; heading: number; gunHeading: number; radarHeading: number } {
 		if (!prev || alpha >= 1) {
 			return {
 				x: curr.x,
 				y: curr.y,
+				heading: curr.heading,
 				gunHeading: curr.gunHeading,
 				radarHeading: curr.radarHeading,
 			}
@@ -266,6 +283,7 @@ export function createRenderer(): BattleRenderer {
 		return {
 			x: lerp(prev.x, curr.x, alpha),
 			y: lerp(prev.y, curr.y, alpha),
+			heading: lerpAngle(prev.heading, curr.heading, alpha),
 			gunHeading: lerpAngle(prev.gunHeading, curr.gunHeading, alpha),
 			radarHeading: lerpAngle(prev.radarHeading, curr.radarHeading, alpha),
 		}
@@ -407,6 +425,7 @@ export function createRenderer(): BattleRenderer {
 					visual,
 					interp.x,
 					interp.y,
+					interp.heading,
 					interp.gunHeading,
 					interp.radarHeading,
 					robot.scanWidth,
@@ -449,6 +468,25 @@ export function createRenderer(): BattleRenderer {
 			if (initialized) {
 				applyOptions()
 			}
+		},
+
+		reset() {
+			// Destroy all entity visuals but keep the PixiJS app and layers alive
+			for (const visual of robotVisuals.values()) {
+				visual.container.destroy({ children: true })
+				visual.healthBarBg.destroy()
+				visual.healthBarFill.destroy()
+				visual.nameLabel.destroy()
+			}
+			robotVisuals.clear()
+
+			for (const visual of bulletVisuals.values()) {
+				visual.gfx.destroy()
+			}
+			bulletVisuals.clear()
+
+			currentFrame = null
+			previousFrame = null
 		},
 
 		destroy() {

@@ -25,6 +25,8 @@ const darkTheme = EditorView.theme(
 			backgroundColor: "#1e1e1e",
 			color: "#d4d4d4",
 			flex: "1",
+			minHeight: "0",
+			overflow: "hidden",
 			fontSize: "13px",
 		},
 		".cm-content": {
@@ -157,6 +159,7 @@ export function CodeEditor({ value, onChange, diagnostics }: CodeEditorProps) {
 			ref={containerRef}
 			style={{
 				flex: 1,
+				minHeight: 0,
 				display: "flex",
 				flexDirection: "column",
 				overflow: "hidden",

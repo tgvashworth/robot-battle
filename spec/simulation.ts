@@ -459,6 +459,7 @@ export interface RobotAPI {
 	randomFloat(): number
 	debugInt(value: number): void
 	debugFloat(value: number): void
+	debugAngle(value: number): void
 	setColor(r: number, g: number, b: number): void
 	setGunColor(r: number, g: number, b: number): void
 	setRadarColor(r: number, g: number, b: number): void
