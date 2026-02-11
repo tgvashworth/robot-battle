@@ -259,21 +259,99 @@ The binary starts with the WASM magic number (`\0asm`) and version 1.
 
 ### Memory Layout
 
-WASM linear memory is organized as:
+WASM provides two kinds of storage for values:
+
+1. **Locals** -- per-function slots, like registers. Fast, accessed with `local.get`/`local.set`. Each has a fixed type (`i32` or `f32`). Cannot be dynamically indexed (there is no "get the i-th local" instruction where i is a runtime value).
+
+2. **Linear memory** -- a flat byte array addressed by integer offsets, allocated in 64KB pages. Read/written with `i32.load`/`i32.store` (or `f32` variants) at byte offsets. Think of it as one big `ArrayBuffer`.
+
+The key constraint driving the memory design: WASM locals cannot be dynamically indexed. If you have an array `arr[i]`, you can't compile that to "get the i-th local" because `i` is only known at runtime. So anything that needs dynamic indexing (arrays, and by extension structs since they share the same approach) must live in linear memory. Globals also must live in linear memory because WASM locals are scoped to a single function invocation and don't persist across calls.
+
+#### The Memory Map
+
+Linear memory is laid out as:
 
 ```
-[0..63]                  Reserved return value slot (64 bytes)
-[64..globalMemorySize)   Global variables (laid out by analyzer)
-[globalMemorySize..)     Local composite types (structs/arrays in function scope)
+Byte 0                          64                      globalMemorySize         localMemoryOffset
+  |                              |                           |                        |
+  v                              v                           v                        v
+  [-- Return Value Slot (64B) --][--- Global Variables ---]  [-- Local Composites --]  [-- 64KB spare --]
 ```
 
-Memory size is computed as: `globalMemorySize + localCompositeSize + 65536` bytes, rounded up to whole 64KB pages.
+**Bytes 0-63: Return value slot.** Reserved for multi-return functions. When a function returns multiple values, they are written here.
 
-**Global variables** are stored in linear memory at offsets assigned by the analyzer. They are accessed with `i32.load`/`i32.store` (for int/bool) or `f32.load`/`f32.store` (for float/angle) at their fixed addresses.
+**Bytes 64 onward: Global variables.** The analyzer assigns each global a byte offset sequentially starting at 64 (`analyzer.ts:166`). Every RBL primitive is 4 bytes (i32 or f32), so each scalar global takes 4 bytes. Structs take `4 * number_of_fields` bytes. The analyzer tracks the running total in `globalOffset`, which becomes `globalMemorySize` in the `AnalysisResult`.
 
-**Local scalar variables** (int, float, bool, angle) are stored as WASM locals. They are fast, stack-allocated, and accessed with `local.get`/`local.set`.
+**After globals: Local composite types.** When codegen encounters a local struct or array variable inside a function, `allocCompositeLocal()` (`codegen.ts:1808`) bump-allocates space after the globals. It creates a WASM local (`i32`) that holds the base address of that memory region. So a local struct with fields `x float` and `y float` gets 8 bytes of linear memory, plus one WASM local holding the integer address of those 8 bytes.
 
-**Local composite variables** (structs and arrays) are stored in linear memory past the global area. Each composite local gets a "base address" WASM local (`i32`) that points to its memory location. This is necessary because WASM locals cannot be dynamically indexed, which arrays require.
+**Total size:** `globalMemorySize + localMemoryOffset + 65536`, rounded up to whole 64KB pages (`codegen.ts:2116`). The 64KB spare provides safety margin.
+
+#### How Different Variable Types Compile
+
+**Local scalar** (`var x int = 5` inside a function) -- uses WASM locals:
+
+```wasm
+i32.const 5
+local.set $x        ;; $x is a WASM local index
+```
+
+**Global scalar** (`var health float = 100.0` at top level) -- uses linear memory at a fixed offset:
+
+```wasm
+;; Write (in init function):
+i32.const 68         ;; memory address assigned by analyzer
+f32.const 100.0
+f32.store            ;; write to linear memory
+
+;; Read (in tick or event handler):
+i32.const 68
+f32.load             ;; read from linear memory
+```
+
+See `compileGlobalLoad` at `codegen.ts:1084`.
+
+**Local struct** (`var pos Vec2 = Vec2{x: 1.0, y: 2.0}` inside a function) -- bump-allocated linear memory with a base address local:
+
+```wasm
+;; Set base address local
+i32.const 128        ;; bump-allocated address past globals
+local.set $pos_base
+
+;; Store field x at base+0
+local.get $pos_base
+f32.const 1.0
+f32.store offset=0
+
+;; Store field y at base+4
+local.get $pos_base
+f32.const 2.0
+f32.store offset=4
+
+;; Read field x later:
+local.get $pos_base
+f32.load offset=0
+```
+
+**Local array** (`var scores [3]int`) -- same approach as structs. Bump-allocated linear memory, base address in a local, elements accessed at `base + index * 4`. Bounds checks compile to:
+
+```wasm
+;; if (index < 0 || index >= length) { unreachable }
+local.get $index
+i32.const 3          ;; array length
+i32.ge_s
+if
+  unreachable        ;; trap: kills this tick's WASM execution
+end
+```
+
+#### Why No Garbage Collection or Freeing
+
+The bump allocator for local composites never frees memory. This is correct because:
+
+1. WASM linear memory persists for the module's lifetime.
+2. Each robot gets a fresh WASM instance per battle.
+3. Local composite addresses are fixed at compile time, not allocated dynamically at runtime.
+4. There is no heap allocation in RBL -- all sizes are known statically.
 
 ### Function Compilation
 
