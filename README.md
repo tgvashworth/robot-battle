@@ -1,3 +1,5 @@
+![](./screenshots/app.png)
+
 # Robot Battle
 
 A browser-based robot battle game. Write robots in RBL (a Go-inspired language), compile them to WASM, and watch them fight in a 2D arena.
@@ -101,13 +103,13 @@ See `spec/INTERFACES.md` for the full interface specification.
 
 ## Tooling
 
-| Tool | Purpose | Config |
-|------|---------|--------|
-| Vite | Dev server and bundler | `vite.config.ts` |
-| TypeScript | Type checking | `tsconfig.json` |
-| Vitest | Testing | `vite.config.ts` (test section) |
-| Biome | Formatting and linting | `biome.json` |
-| pre-commit | Git hooks | `.pre-commit-config.yaml` |
+| Tool       | Purpose                | Config                          |
+| ---------- | ---------------------- | ------------------------------- |
+| Vite       | Dev server and bundler | `vite.config.ts`                |
+| TypeScript | Type checking          | `tsconfig.json`                 |
+| Vitest     | Testing                | `vite.config.ts` (test section) |
+| Biome      | Formatting and linting | `biome.json`                    |
+| pre-commit | Git hooks              | `.pre-commit-config.yaml`       |
 
 ### Code Style
 
