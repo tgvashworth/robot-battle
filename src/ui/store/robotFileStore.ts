@@ -73,7 +73,7 @@ export const useRobotFileStore = create<RobotFileState>((set, get) => ({
 		if (get().files.length > 0) return
 
 		try {
-			const manifestResponse = await fetch("/robots/manifest.json")
+			const manifestResponse = await fetch(`${import.meta.env.BASE_URL}robots/manifest.json`)
 			const manifest: unknown = await manifestResponse.json()
 			if (!Array.isArray(manifest)) return
 
@@ -85,7 +85,7 @@ export const useRobotFileStore = create<RobotFileState>((set, get) => ({
 			for (const filename of manifest) {
 				if (typeof filename !== "string") continue
 				try {
-					const sourceResponse = await fetch(`/robots/${filename}`)
+					const sourceResponse = await fetch(`${import.meta.env.BASE_URL}robots/${filename}`)
 					const diskSource = await sourceResponse.text()
 					const id = crypto.randomUUID()
 					diskSources[id] = diskSource
@@ -127,7 +127,7 @@ export const useRobotFileStore = create<RobotFileState>((set, get) => ({
 		const file = get().files.find((f) => f.id === id)
 		if (!file) return
 		try {
-			const resp = await fetch(`/robots/${file.filename}`)
+			const resp = await fetch(`${import.meta.env.BASE_URL}robots/${file.filename}`)
 			const diskSource = await resp.text()
 			const persisted = loadPersistedUI()
 			const fileSources = { ...persisted.fileSources }
@@ -154,7 +154,7 @@ export const useRobotFileStore = create<RobotFileState>((set, get) => ({
 		for (let i = 0; i < newFiles.length; i++) {
 			const file = newFiles[i]!
 			try {
-				const resp = await fetch(`/robots/${file.filename}`)
+				const resp = await fetch(`${import.meta.env.BASE_URL}robots/${file.filename}`)
 				const diskSource = await resp.text()
 				newFiles[i] = { ...file, source: diskSource, lastModified: Date.now() }
 				newDiskSources[file.id] = diskSource
